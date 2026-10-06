@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>كاتب عمومي — وثائقك الإدارية في دقيقة واحدة</title>
+  <meta name="description" content="تطبيق ويب لتوليد الوثائق الإدارية المغربية (شكايات، توكيلات، عقود...) بصيغة Word وPDF." />
+  <meta name="theme-color" content="#16294a" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <div class="page-loading" style="min-height:100vh;"><div class="spinner dark"></div></div>
+  </div>
+
+  <!-- Third-party libraries used purely for client-side document export.
+       Supabase is loaded as an ES module import inside js/supabaseClient.js. -->
+  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
+
+  <!-- Generated automatically on deploy by .github/workflows/deploy-pages.yml.
+       For local dev: copy supabase-config.example.js to supabase-config.js. -->
+  <script src="supabase-config.js"></script>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

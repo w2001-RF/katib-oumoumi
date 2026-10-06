@@ -1,0 +1,7 @@
+# Generated at deploy time by .github/workflows/deploy-pages.yml
+# Keep your real keys out of git; use supabase-config.example.js locally.
+supabase-config.js
+
+.DS_Store
+Thumbs.db
+*.log
