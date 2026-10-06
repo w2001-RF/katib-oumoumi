@@ -327,7 +327,7 @@ img, svg { display: block; }
   font-size: 0.76rem;
   margin-top: 5px;
 }
-.field.has-error input, .field.has-error textarea { border-color: var(--danger); }
+.field.has-error input, .field.has-error textarea, .field.has-error select { border-color: var(--danger); }
 
 .form-footer {
   position: sticky;

@@ -33,6 +33,8 @@ export function sampleValuesFor(fields) {
     cin: 'A123456',
   };
   const values = {};
-  for (const f of fields) values[f.field_key] = samples[f.field_type] || 'قيمة';
+  for (const f of fields) {
+    values[f.field_key] = (f.field_type === 'select' && f.options && f.options[0]) || samples[f.field_type] || 'قيمة';
+  }
   return values;
 }

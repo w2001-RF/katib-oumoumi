@@ -4,7 +4,7 @@ import { navigate } from '../router.js';
 import { requireAdmin } from './adminGuard.js';
 import { FIELD_TYPES } from '../utils/validators.js';
 import { renderTemplate, sampleValuesFor } from '../utils/templateEngine.js';
-import { uid } from '../utils/format.js';
+import { uid, escapeHtml } from '../utils/format.js';
 import {
   fetchCategories,
   adminFetchDocumentType,
@@ -42,6 +42,10 @@ function fieldRowHtml(field) {
     <div class="field" style="grid-column:2/3;">
       <label>نص توضيحي (اختياري)</label>
       <input type="text" class="f-placeholder" value="${(field.placeholder_ar || '').replace(/"/g, '&quot;')}" />
+    </div>
+    <div class="field f-options-wrap" style="grid-column:1/4;" ${field.field_type === 'select' ? '' : 'hidden'}>
+      <label>اختيارات القائمة (اختيار واحد في كل سطر)</label>
+      <textarea class="f-options" rows="4">${escapeHtml((field.options || []).join('\n'))}</textarea>
     </div>
     <label class="checkbox-row" style="grid-column:1/4;">
       <input type="checkbox" class="f-required" ${field.is_required !== false ? 'checked' : ''} /> حقل إلزامي
@@ -143,6 +147,9 @@ async function editorView(container, params) {
     fieldsListEl.innerHTML = workingFields.map(fieldRowHtml).join('') ||
       `<p class="small-note" style="margin-bottom:12px;">لا توجد حقول بعد.</p>`;
     fieldsListEl.querySelectorAll('[data-row-id]').forEach((row) => {
+      row.querySelector('.f-type').addEventListener('change', (e) => {
+        row.querySelector('.f-options-wrap').hidden = e.target.value !== 'select';
+      });
       row.querySelector('[data-remove-row]').addEventListener('click', () => {
         workingFields = workingFields.filter((f) => f.rowId !== row.dataset.rowId);
         paintFields();
@@ -164,6 +171,11 @@ async function editorView(container, params) {
       field_type: row.querySelector('.f-type').value,
       placeholder_ar: row.querySelector('.f-placeholder').value.trim(),
       is_required: row.querySelector('.f-required').checked,
+      options: row
+        .querySelector('.f-options')
+        .value.split('\n')
+        .map((o) => o.trim())
+        .filter(Boolean),
     }));
   }
 
@@ -187,6 +199,10 @@ async function editorView(container, params) {
     for (const f of currentFields) {
       if (!f.field_key || !f.label_ar) {
         showToast('يرجى تعبئة مفتاح وتسمية كل حقل');
+        return;
+      }
+      if (f.field_type === 'select' && !f.options.length) {
+        showToast(`يرجى إضافة اختيارات للقائمة: ${f.label_ar}`);
         return;
       }
     }

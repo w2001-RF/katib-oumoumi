@@ -210,6 +210,7 @@ export async function adminReplaceFields(documentTypeId, fields) {
     field_type: f.field_type,
     is_required: f.is_required,
     placeholder_ar: f.placeholder_ar || '',
+    options: f.field_type === 'select' ? f.options || [] : [],
     sort_order: i,
   }));
   const { data, error } = await supabase.from('template_fields').insert(rows).select();

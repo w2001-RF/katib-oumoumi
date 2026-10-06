@@ -2,7 +2,7 @@ import { icon } from '../utils/icons.js';
 import { renderHeader, renderBottomNav, loadingSpinner, attachHeaderBack, showToast } from '../ui.js';
 import { navigate } from '../router.js';
 import { fetchDocumentType, fetchTemplateFields, incrementUsage, logGeneratedDocument } from '../api.js';
-import { validateField, inputTypeFor } from '../utils/validators.js';
+import { validateField, inputTypeFor, fieldOptions } from '../utils/validators.js';
 import { addHistoryEntry } from '../history.js';
 import { escapeHtml } from '../utils/format.js';
 
@@ -18,6 +18,20 @@ function fieldInputHtml(field) {
         <textarea name="${key}" placeholder="${placeholder}"></textarea>
         <div class="error-msg" hidden></div>
       </div>`;
+  }
+  if (field.field_type === 'select') {
+    const options = fieldOptions(field)
+      .map((o) => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`)
+      .join('');
+    return `
+    <div class="field" data-field="${key}">
+      <label>${req}${label}</label>
+      <select name="${key}">
+        <option value="">${placeholder || '— اختر —'}</option>
+        ${options}
+      </select>
+      <div class="error-msg" hidden></div>
+    </div>`;
   }
   const type = inputTypeFor(field.field_type);
   return `
@@ -71,7 +85,7 @@ export async function renderDocForm(container, params) {
 
     for (const field of fields) {
       const wrap = form.querySelector(`[data-field="${CSS.escape(field.field_key)}"]`);
-      const input = wrap.querySelector('input, textarea');
+      const input = wrap.querySelector('input, textarea, select');
       const value = input.value;
       values[field.field_key] = value;
       const errMsg = validateField(field, value);

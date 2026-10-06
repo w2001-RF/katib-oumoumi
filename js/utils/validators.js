@@ -9,6 +9,7 @@ export const FIELD_TYPES = [
   { value: 'phone', label: 'رقم هاتف' },
   { value: 'email', label: 'بريد إلكتروني' },
   { value: 'cin', label: 'رقم البطاقة الوطنية' },
+  { value: 'select', label: 'قائمة اختيارات' },
 ];
 
 export function fieldTypeLabel(value) {
@@ -46,9 +47,17 @@ export function validateField(field, rawValue) {
     case 'cin':
       if (!CIN_RE.test(value)) return 'رقم البطاقة الوطنية غير صحيح (مثال: G754103)';
       return null;
+    case 'select':
+      if (fieldOptions(field).length && !fieldOptions(field).includes(value)) return 'يرجى اختيار قيمة من القائمة';
+      return null;
     default:
       return null;
   }
+}
+
+// Choices of a 'select' field (jsonb array in the database).
+export function fieldOptions(field) {
+  return Array.isArray(field.options) ? field.options : [];
 }
 
 export function inputTypeFor(fieldType) {

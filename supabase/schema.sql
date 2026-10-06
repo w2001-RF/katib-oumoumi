@@ -36,7 +36,8 @@ create table if not exists public.template_fields (
   field_key         text not null,             -- used inside {{field_key}} in the template
   label_ar          text not null,
   field_type        text not null default 'varchar'
-                    check (field_type in ('varchar','text','int','date','phone','email','cin')),
+                    check (field_type in ('varchar','text','int','date','phone','email','cin','select')),
+  options           jsonb not null default '[]'::jsonb,  -- choices for field_type = 'select'
   is_required       boolean not null default true,
   placeholder_ar    text not null default '',
   sort_order        integer not null default 0,
