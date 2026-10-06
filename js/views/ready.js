@@ -93,8 +93,8 @@ export async function renderReady(container, params) {
 
     actionsSlot.querySelector('#download-pdf').addEventListener('click', async () => {
       try {
-        await exportAsPdf(filledHtml, filename);
-        showToast('تم تحميل الوثيقة بصيغة PDF');
+        const mode = await exportAsPdf(filledHtml, filename);
+        showToast(mode === 'print' ? 'اختر "حفظ بصيغة PDF" من نافذة الطباعة' : 'تم تحميل الوثيقة بصيغة PDF');
       } catch (e) {
         showToast('تعذر تحميل الوثيقة');
       }
