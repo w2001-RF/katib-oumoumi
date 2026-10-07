@@ -4,7 +4,7 @@ import { getHistory, deleteHistoryEntry } from '../history.js';
 import { formatDateTimeShort } from '../utils/format.js';
 import { fetchDocumentType, fetchTemplateFields } from '../api.js';
 import { renderTemplate } from '../utils/templateEngine.js';
-import { exportAsWord } from '../utils/docGenerator.js';
+import { documentLoader, bindShareButton } from '../utils/shareButton.js';
 import { navigate } from '../router.js';
 
 export async function renderHistory(container) {
@@ -58,23 +58,17 @@ export async function renderHistory(container) {
       card.querySelector('[data-action="open"]').addEventListener('click', () => {
         navigate(`/ready/${id}`);
       });
-      card.querySelector('[data-action="share"]').addEventListener('click', async () => {
-        const entry = getHistory().find((r) => r.id === id);
-        if (!entry) return;
-        try {
+      const entry = items.find((r) => r.id === id);
+      bindShareButton(card.querySelector('[data-action="share"]'), {
+        load: documentLoader(async () => {
           const [docType, fields] = await Promise.all([
             fetchDocumentType(entry.documentTypeId),
             fetchTemplateFields(entry.documentTypeId),
           ]);
-          const html = renderTemplate(docType.template_body, fields, entry.data);
-          if (navigator.share) {
-            await navigator.share({ title: docType.name_ar, text: 'وثيقة من تطبيق كاتب عمومي' }).catch(() => {});
-          } else {
-            exportAsWord(html, docType.name_ar.replace(/\s+/g, '_'));
-          }
-        } catch {
-          showToast('تعذر تجهيز الوثيقة للمشاركة');
-        }
+          return renderTemplate(docType.template_body, fields, entry.data);
+        }),
+        filename: entry.documentTypeName.replace(/\s+/g, '_'),
+        title: entry.documentTypeName,
       });
     });
   }

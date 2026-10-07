@@ -174,8 +174,40 @@ function buildPdf(canvas, pageRanges) {
   return pdf;
 }
 
+// Lays the document out in a hidden iframe; the caller removes the frame.
+async function layoutDocument(bodyHtml) {
+  const styleTag = `<style>${await getEmbeddedFontCss()}\n${DOC_CSS}</style>`;
+  const frame = await createHiddenFrame(
+    `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8" />${styleTag}</head>` +
+      `<body style="margin:0;background:#fff;"><div class="katib-doc" dir="rtl" lang="ar">${bodyHtml}</div></body></html>`,
+  );
+  const frameDoc = frame.contentDocument;
+  if (frameDoc.fonts && frameDoc.fonts.ready) await frameDoc.fonts.ready;
+  return { frame, styleTag, docEl: frameDoc.querySelector('.katib-doc') };
+}
+
+// Builds the PDF and resolves to a Blob, or to null when this browser cannot
+// rasterize the document (some Safari versions taint foreignObject canvases)
+// — use printDocument() then.
+export async function generatePdfBlob(bodyHtml) {
+  if (!window.jspdf) throw new Error('مكتبة تصدير PDF غير محمّلة');
+  const { frame, styleTag, docEl } = await layoutDocument(bodyHtml);
+  try {
+    const height = Math.ceil(docEl.getBoundingClientRect().height);
+    const pageRanges = computePageRanges(measureLines(docEl), height);
+    try {
+      return buildPdf(await renderToCanvas(docEl, styleTag, height), pageRanges).output('blob');
+    } catch {
+      return null;
+    }
+  } finally {
+    frame.remove();
+  }
+}
+
 // Last resort: the browser's own print dialog ("Save as PDF").
-function printFallback(frame, title) {
+export async function printDocument(bodyHtml, title) {
+  const { frame } = await layoutDocument(bodyHtml);
   const doc = frame.contentDocument;
   doc.title = title;
   const style = doc.createElement('style');
@@ -183,47 +215,37 @@ function printFallback(frame, title) {
   doc.head.appendChild(style);
   frame.contentWindow.focus();
   frame.contentWindow.print();
+  setTimeout(() => frame.remove(), 60000);
 }
 
-// Resolves to 'download' when a .pdf file was saved, or 'print' when the
-// browser's print dialog was opened instead.
-export async function exportAsPdf(bodyHtml, filename) {
-  if (!window.jspdf) throw new Error('مكتبة تصدير PDF غير محمّلة');
-  const styleTag = `<style>${await getEmbeddedFontCss()}\n${DOC_CSS}</style>`;
-  const frame = await createHiddenFrame(
-    `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8" />${styleTag}</head>` +
-      `<body style="margin:0;background:#fff;"><div class="katib-doc" dir="rtl" lang="ar">${bodyHtml}</div></body></html>`,
-  );
-  let keepFrame = false;
-  try {
-    const frameDoc = frame.contentDocument;
-    if (frameDoc.fonts && frameDoc.fonts.ready) await frameDoc.fonts.ready;
-    const docEl = frameDoc.querySelector('.katib-doc');
-    const height = Math.ceil(docEl.getBoundingClientRect().height);
-    const pageRanges = computePageRanges(measureLines(docEl), height);
-
-    let pdf;
-    try {
-      pdf = buildPdf(await renderToCanvas(docEl, styleTag, height), pageRanges);
-    } catch {
-      keepFrame = true;
-      printFallback(frame, filename);
-      setTimeout(() => frame.remove(), 60000);
-      return 'print';
-    }
-    pdf.save(`${filename}.pdf`);
-    return 'download';
-  } finally {
-    if (!keepFrame) frame.remove();
+// Saves `pdfBlob` (or a freshly generated one) as a .pdf file. Resolves to
+// 'download', or to 'print' when the print dialog was opened instead.
+export async function exportAsPdf(bodyHtml, filename, pdfBlob) {
+  const blob = pdfBlob || (await generatePdfBlob(bodyHtml));
+  if (!blob) {
+    await printDocument(bodyHtml, filename);
+    return 'print';
   }
+  window.saveAs(blob, `${filename}.pdf`);
+  return 'download';
 }
 
-export async function shareOrDownload(bodyHtml, filename, format) {
-  // Web Share API (level 2, files) works on most mobile browsers; we fall
-  // back to a plain download everywhere else.
-  if (format === 'word') {
-    exportAsWord(bodyHtml, filename);
-  } else {
-    await exportAsPdf(bodyHtml, filename);
+// Opens the system share sheet with the PDF file itself (WhatsApp, Gmail...).
+// Resolves to:
+//   'shared'      — shared, or the user closed the share sheet
+//   'retry'       — the browser refused because the tap is too old (the PDF
+//                   took a while to build); a second tap shares instantly
+//   'unsupported' — this browser cannot share files
+export async function sharePdf(pdfBlob, filename, title) {
+  if (!pdfBlob || !navigator.share || !navigator.canShare) return 'unsupported';
+  const file = new File([pdfBlob], `${filename}.pdf`, { type: 'application/pdf' });
+  if (!navigator.canShare({ files: [file] })) return 'unsupported';
+  try {
+    await navigator.share({ files: [file], title });
+    return 'shared';
+  } catch (e) {
+    if (e && e.name === 'AbortError') return 'shared';
+    if (e && e.name === 'NotAllowedError') return 'retry';
+    throw e;
   }
 }

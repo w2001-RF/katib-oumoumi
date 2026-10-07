@@ -48,6 +48,8 @@ export function validateField(field, rawValue) {
       if (!CIN_RE.test(value)) return 'رقم البطاقة الوطنية غير صحيح (مثال: G754103)';
       return null;
     case 'select':
+      // «أخرى» in the options means any typed value is accepted.
+      if (hasOtherOption(field)) return null;
       if (fieldOptions(field).length && !fieldOptions(field).includes(value)) return 'يرجى اختيار قيمة من القائمة';
       return null;
     default:
@@ -58,6 +60,14 @@ export function validateField(field, rawValue) {
 // Choices of a 'select' field (jsonb array in the database).
 export function fieldOptions(field) {
   return Array.isArray(field.options) ? field.options : [];
+}
+
+// Adding this option to a 'select' field lets the user type a value that
+// is not in the list (e.g. a small town missing from the city list).
+export const OTHER_OPTION = 'أخرى';
+
+export function hasOtherOption(field) {
+  return fieldOptions(field).includes(OTHER_OPTION);
 }
 
 export function inputTypeFor(fieldType) {

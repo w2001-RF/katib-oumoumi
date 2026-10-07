@@ -4,6 +4,7 @@ import { navigate } from '../router.js';
 import { requireAdmin } from './adminGuard.js';
 import { FIELD_TYPES } from '../utils/validators.js';
 import { renderTemplate, sampleValuesFor } from '../utils/templateEngine.js';
+import { enhanceSelects } from '../utils/searchableSelect.js';
 import { uid, escapeHtml } from '../utils/format.js';
 import {
   fetchCategories,
@@ -44,7 +45,7 @@ function fieldRowHtml(field) {
       <input type="text" class="f-placeholder" value="${(field.placeholder_ar || '').replace(/"/g, '&quot;')}" />
     </div>
     <div class="field f-options-wrap" style="grid-column:1/4;" ${field.field_type === 'select' ? '' : 'hidden'}>
-      <label>اختيارات القائمة (اختيار واحد في كل سطر)</label>
+      <label>اختيارات القائمة (اختيار واحد في كل سطر — أضف «أخرى» للسماح بكتابة قيمة غير موجودة)</label>
       <textarea class="f-options" rows="4">${escapeHtml((field.options || []).join('\n'))}</textarea>
     </div>
     <label class="checkbox-row" style="grid-column:1/4;">
@@ -142,10 +143,12 @@ async function editorView(container, params) {
   `;
 
   const fieldsListEl = main.querySelector('#fields-list');
+  enhanceSelects(main.querySelector('#meta-form'));
 
   function paintFields() {
     fieldsListEl.innerHTML = workingFields.map(fieldRowHtml).join('') ||
       `<p class="small-note" style="margin-bottom:12px;">لا توجد حقول بعد.</p>`;
+    enhanceSelects(fieldsListEl);
     fieldsListEl.querySelectorAll('[data-row-id]').forEach((row) => {
       row.querySelector('.f-type').addEventListener('change', (e) => {
         row.querySelector('.f-options-wrap').hidden = e.target.value !== 'select';

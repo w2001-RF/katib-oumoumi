@@ -2,9 +2,17 @@ import { icon } from '../utils/icons.js';
 import { renderHeader, renderBottomNav, loadingSpinner, attachHeaderBack, showToast } from '../ui.js';
 import { navigate } from '../router.js';
 import { fetchDocumentType, fetchTemplateFields, incrementUsage, logGeneratedDocument } from '../api.js';
-import { validateField, inputTypeFor, fieldOptions } from '../utils/validators.js';
+import { validateField, inputTypeFor, fieldOptions, hasOtherOption, OTHER_OPTION } from '../utils/validators.js';
 import { addHistoryEntry } from '../history.js';
 import { escapeHtml } from '../utils/format.js';
+import { enhanceSelects } from '../utils/searchableSelect.js';
+
+// Value of a field's control; for a dropdown set to «أخرى», the typed text.
+function readFieldValue(wrap) {
+  const select = wrap.querySelector('select');
+  if (select && select.value === OTHER_OPTION) return wrap.querySelector('.other-input').value;
+  return wrap.querySelector('input, textarea, select').value;
+}
 
 function fieldInputHtml(field) {
   const req = field.is_required ? '<span class="req">*</span>' : '';
@@ -30,6 +38,7 @@ function fieldInputHtml(field) {
         <option value="">${placeholder || '— اختر —'}</option>
         ${options}
       </select>
+      ${hasOtherOption(field) ? '<input type="text" class="other-input" placeholder="اكتب القيمة" hidden />' : ''}
       <div class="error-msg" hidden></div>
     </div>`;
   }
@@ -76,6 +85,15 @@ export async function renderDocForm(container, params) {
   `;
 
   const form = main.querySelector('#doc-form');
+  enhanceSelects(form);
+
+  form.querySelectorAll('.other-input').forEach((other) => {
+    const select = other.parentElement.querySelector('select');
+    select.addEventListener('change', () => {
+      other.hidden = select.value !== OTHER_OPTION;
+      if (!other.hidden) other.focus();
+    });
+  });
   const submitBtn = main.querySelector('#submit-btn');
 
   form.addEventListener('submit', async (e) => {
@@ -85,8 +103,7 @@ export async function renderDocForm(container, params) {
 
     for (const field of fields) {
       const wrap = form.querySelector(`[data-field="${CSS.escape(field.field_key)}"]`);
-      const input = wrap.querySelector('input, textarea, select');
-      const value = input.value;
+      const value = readFieldValue(wrap);
       values[field.field_key] = value;
       const errMsg = validateField(field, value);
       const errEl = wrap.querySelector('.error-msg');

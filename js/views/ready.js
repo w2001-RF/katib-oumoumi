@@ -4,6 +4,7 @@ import { getHistoryEntry } from '../history.js';
 import { fetchDocumentType, fetchTemplateFields } from '../api.js';
 import { renderTemplate } from '../utils/templateEngine.js';
 import { exportAsWord, exportAsPdf } from '../utils/docGenerator.js';
+import { documentLoader, bindShareButton } from '../utils/shareButton.js';
 
 const AD_SECONDS = 4;
 
@@ -43,6 +44,7 @@ export async function renderReady(container, params) {
   const filledHtml = renderTemplate(docType.template_body, fields, entry.data);
   const filename = `${docType.name_ar}`.replace(/\s+/g, '_');
   const actionsSlot = container.querySelector('#actions-slot');
+  const loadDocument = documentLoader(() => filledHtml);
 
   function renderGate() {
     actionsSlot.innerHTML = `
@@ -81,6 +83,9 @@ export async function renderReady(container, params) {
       <button class="link-btn" id="toggle-preview" style="display:block;margin:16px auto 0;">معاينة الوثيقة</button>
       <div id="preview-box" hidden></div>
     `;
+    // Build the PDF right away so «تحميل PDF» and «مشاركة» respond instantly
+    // (sharing must happen within a few seconds of the tap).
+    loadDocument();
 
     actionsSlot.querySelector('#download-word').addEventListener('click', () => {
       try {
@@ -93,23 +98,18 @@ export async function renderReady(container, params) {
 
     actionsSlot.querySelector('#download-pdf').addEventListener('click', async () => {
       try {
-        const mode = await exportAsPdf(filledHtml, filename);
+        const { blob } = await loadDocument();
+        const mode = await exportAsPdf(filledHtml, filename, blob);
         showToast(mode === 'print' ? 'اختر "حفظ بصيغة PDF" من نافذة الطباعة' : 'تم تحميل الوثيقة بصيغة PDF');
       } catch (e) {
         showToast('تعذر تحميل الوثيقة');
       }
     });
 
-    actionsSlot.querySelector('#share-btn').addEventListener('click', async () => {
-      if (navigator.share) {
-        try {
-          await navigator.share({ title: docType.name_ar, text: 'وثيقة من تطبيق كاتب عمومي' });
-        } catch {
-          /* user cancelled */
-        }
-      } else {
-        showToast('المشاركة غير مدعومة على هذا المتصفح');
-      }
+    bindShareButton(actionsSlot.querySelector('#share-btn'), {
+      load: loadDocument,
+      filename,
+      title: docType.name_ar,
     });
 
     const previewBox = actionsSlot.querySelector('#preview-box');
