@@ -322,7 +322,8 @@ img, svg { display: block; }
   border-color: var(--gold-500);
 }
 .field textarea { min-height: 90px; resize: vertical; }
-.field .other-input { margin-top: 8px; }
+.field .other-input,
+.admin-fieldrow .f-list-name { margin-top: 8px; }
 .field .error-msg {
   color: var(--danger);
   font-size: 0.76rem;

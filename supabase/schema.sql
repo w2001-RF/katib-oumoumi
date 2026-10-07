@@ -30,20 +30,76 @@ create table if not exists public.document_types (
   updated_at      timestamptz not null default now()
 );
 
-create table if not exists public.template_fields (
+-- Reusable lists of choices for dropdown fields (cities, durations...).
+-- Each list is stored once and shared by every field that uses it.
+create table if not exists public.option_lists (
+  id            uuid primary key default gen_random_uuid(),
+  name          text not null unique,
+  created_at    timestamptz not null default now()
+);
+
+create table if not exists public.option_list_items (
+  id            uuid primary key default gen_random_uuid(),
+  list_id       uuid not null references public.option_lists(id) on delete cascade,
+  value         text not null,
+  sort_order    integer not null default 0,
+  unique (list_id, value)
+);
+
+-- Field catalog: one row per placeholder key. What a field *is* (its type,
+-- default label/placeholder, choices) is defined here, once, and shared by
+-- every document that uses it. Keys are global because documents store the
+-- user's answers by key (see generated_documents.data).
+create table if not exists public.field_definitions (
+  id              uuid primary key default gen_random_uuid(),
+  field_key       text not null unique,       -- used inside {{field_key}} in templates
+  label_ar        text not null,
+  field_type      text not null default 'varchar'
+                  check (field_type in ('varchar','text','int','date','phone','email','cin','select')),
+  placeholder_ar  text not null default '',
+  option_list_id  uuid references public.option_lists(id) on delete restrict,
+  created_at      timestamptz not null default now(),
+  -- a dropdown must have a list of choices; no other type may have one
+  constraint field_definitions_select_has_list check ((field_type = 'select') = (option_list_id is not null))
+);
+
+-- Which fields a document asks for. Holds only what is specific to the
+-- document: order, required-ness and optional label/placeholder overrides
+-- (NULL = use the catalog's).
+create table if not exists public.document_type_fields (
   id                uuid primary key default gen_random_uuid(),
   document_type_id  uuid not null references public.document_types(id) on delete cascade,
-  field_key         text not null,             -- used inside {{field_key}} in the template
-  label_ar          text not null,
-  field_type        text not null default 'varchar'
-                    check (field_type in ('varchar','text','int','date','phone','email','cin','select')),
-  options           jsonb not null default '[]'::jsonb,  -- choices for field_type = 'select'
+  field_id          uuid not null references public.field_definitions(id) on delete restrict,
+  label_ar          text,
+  placeholder_ar    text,
   is_required       boolean not null default true,
-  placeholder_ar    text not null default '',
   sort_order        integer not null default 0,
-  created_at        timestamptz not null default now(),
-  unique (document_type_id, field_key)
+  unique (document_type_id, field_id)
 );
+
+-- The fields of a document with catalog defaults and overrides applied and
+-- the dropdown choices inlined. This is what the app reads.
+create or replace view public.v_template_fields
+with (security_invoker = true) as
+select
+  dtf.id,
+  dtf.document_type_id,
+  dtf.field_id,
+  fd.field_key,
+  coalesce(dtf.label_ar, fd.label_ar)             as label_ar,
+  fd.field_type,
+  coalesce(dtf.placeholder_ar, fd.placeholder_ar) as placeholder_ar,
+  dtf.is_required,
+  dtf.sort_order,
+  fd.option_list_id,
+  ol.name                                         as option_list_name,
+  coalesce(
+    (select jsonb_agg(i.value order by i.sort_order, i.value)
+       from public.option_list_items i where i.list_id = fd.option_list_id),
+    '[]'::jsonb)                                  as options
+from public.document_type_fields dtf
+join public.field_definitions fd on fd.id = dtf.field_id
+left join public.option_lists ol on ol.id = fd.option_list_id;
 
 create table if not exists public.generated_documents (
   id                uuid primary key default gen_random_uuid(),
@@ -54,7 +110,9 @@ create table if not exists public.generated_documents (
 );
 
 create index if not exists idx_document_types_category on public.document_types(category_id);
-create index if not exists idx_template_fields_doctype on public.template_fields(document_type_id);
+create index if not exists idx_doc_type_fields_doctype on public.document_type_fields(document_type_id);
+create index if not exists idx_doc_type_fields_field on public.document_type_fields(field_id);
+create index if not exists idx_field_definitions_list on public.field_definitions(option_list_id);
 create index if not exists idx_generated_documents_session on public.generated_documents(session_id);
 
 -- --- Helper: increment usage_count atomically -----------------------------
@@ -70,7 +128,10 @@ $$;
 -- --- Row Level Security ----------------------------------------------------
 alter table public.categories enable row level security;
 alter table public.document_types enable row level security;
-alter table public.template_fields enable row level security;
+alter table public.option_lists enable row level security;
+alter table public.option_list_items enable row level security;
+alter table public.field_definitions enable row level security;
+alter table public.document_type_fields enable row level security;
 alter table public.generated_documents enable row level security;
 
 -- Public (anon) read access — the whole point of the app for normal users
@@ -80,7 +141,13 @@ create policy "public read categories" on public.categories
 create policy "public read document_types" on public.document_types
   for select using (is_published = true);
 
-create policy "public read template_fields" on public.template_fields
+create policy "public read option_lists" on public.option_lists
+  for select using (true);
+create policy "public read option_list_items" on public.option_list_items
+  for select using (true);
+create policy "public read field_definitions" on public.field_definitions
+  for select using (true);
+create policy "public read document_type_fields" on public.document_type_fields
   for select using (true);
 
 -- Anonymous users may log a document they generated, but only ever their own rows
@@ -94,7 +161,16 @@ create policy "admin full access categories" on public.categories
 create policy "admin full access document_types" on public.document_types
   for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 
-create policy "admin full access template_fields" on public.template_fields
+create policy "admin full access option_lists" on public.option_lists
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+create policy "admin full access option_list_items" on public.option_list_items
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+create policy "admin full access field_definitions" on public.field_definitions
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+create policy "admin full access document_type_fields" on public.document_type_fields
   for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 
 create policy "admin read generated_documents" on public.generated_documents
@@ -104,6 +180,7 @@ create policy "admin delete generated_documents" on public.generated_documents
   for delete using (auth.role() = 'authenticated');
 
 grant execute on function public.increment_document_usage(uuid) to anon, authenticated;
+grant select on public.v_template_fields to anon, authenticated;
 
 -- ============================================================================
 -- Seed data — mirrors the reference screenshots so the app works out of the box

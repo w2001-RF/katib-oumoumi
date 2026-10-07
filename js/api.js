@@ -80,10 +80,13 @@ export async function fetchDocumentType(id) {
   return data;
 }
 
+// Fields of a document, flattened by the v_template_fields view: catalog
+// defaults with the document's overrides applied and the dropdown choices
+// inlined as `options`.
 export async function fetchTemplateFields(documentTypeId) {
   assertClient();
   const { data, error } = await supabase
-    .from('template_fields')
+    .from('v_template_fields')
     .select('*')
     .eq('document_type_id', documentTypeId)
     .order('sort_order', { ascending: true });
@@ -197,25 +200,166 @@ export async function adminDeleteDocumentType(id) {
   if (error) throw error;
 }
 
+// --- Dropdown choice lists ---------------------------------------------------
+
+// Value of a field's `option_list_id` meaning "create a new list for it".
+export const NEW_OPTION_LIST = '__new__';
+
+// An error whose message can be shown to the admin as is.
+function userError(message) {
+  const e = new Error(message);
+  e.userMessage = message;
+  return e;
+}
+
+// Every option list with its items in order: [{ id, name, items: [string] }].
+export async function fetchOptionLists() {
+  assertClient();
+  const [lists, items] = await Promise.all([
+    supabase.from('option_lists').select('id, name').order('name'),
+    supabase.from('option_list_items').select('list_id, value, sort_order'),
+  ]);
+  if (lists.error) throw lists.error;
+  if (items.error) throw items.error;
+  return lists.data.map((l) => ({
+    ...l,
+    items: items.data
+      .filter((i) => i.list_id === l.id)
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((i) => i.value),
+  }));
+}
+
+async function createOptionList(name, items) {
+  const { data: list, error } = await supabase.from('option_lists').insert({ name }).select().single();
+  if (error) throw error;
+  if (items.length) {
+    const rows = items.map((value, i) => ({ list_id: list.id, value, sort_order: i }));
+    const { error: itemsErr } = await supabase.from('option_list_items').insert(rows);
+    if (itemsErr) throw itemsErr;
+  }
+  return list.id;
+}
+
+// Makes the list hold exactly `items`, in that order. New and kept values
+// are written first, removed ones deleted last, so a failure never leaves
+// the list emptier than it was.
+async function replaceOptionListItems(listId, items) {
+  const { data: existing, error } = await supabase.from('option_list_items').select('id, value').eq('list_id', listId);
+  if (error) throw error;
+  if (items.length) {
+    const rows = items.map((value, i) => ({ list_id: listId, value, sort_order: i }));
+    const { error: upErr } = await supabase.from('option_list_items').upsert(rows, { onConflict: 'list_id,value' });
+    if (upErr) throw upErr;
+  }
+  const keep = new Set(items);
+  const removedIds = existing.filter((r) => !keep.has(r.value)).map((r) => r.id);
+  if (removedIds.length) {
+    const { error: delErr } = await supabase.from('option_list_items').delete().in('id', removedIds);
+    if (delErr) throw delErr;
+  }
+}
+
+const sameItems = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+
+// --- Document fields -----------------------------------------------------------
+//
+// A field is two things: its *definition* (key, type, default label and
+// placeholder, dropdown list) — one row per key, shared by every document —
+// and its *use* in a document (order, required, optional label/placeholder
+// override). Saving a document therefore:
+//   1. creates / updates the dropdown lists its fields use,
+//   2. reuses the definition of each existing key and creates the missing
+//      ones (a shared definition is never changed from here, so editing one
+//      document cannot silently alter another),
+//   3. rewrites the document's field links.
+// `fields`: [{ field_key, label_ar, field_type, placeholder_ar, is_required,
+//              options, option_list_id, list_name }] in display order.
 export async function adminReplaceFields(documentTypeId, fields) {
   assertClient();
-  // Simplicity over granular diffing: wipe and re-insert on every save.
-  const { error: delErr } = await supabase.from('template_fields').delete().eq('document_type_id', documentTypeId);
-  if (delErr) throw delErr;
-  if (!fields.length) return [];
-  const rows = fields.map((f, i) => ({
-    document_type_id: documentTypeId,
-    field_key: f.field_key,
-    label_ar: f.label_ar,
-    field_type: f.field_type,
-    is_required: f.is_required,
-    placeholder_ar: f.placeholder_ar || '',
-    options: f.field_type === 'select' ? f.options || [] : [],
-    sort_order: i,
-  }));
-  const { data, error } = await supabase.from('template_fields').insert(rows).select();
-  if (error) throw error;
-  return data;
+
+  // 1. dropdown lists
+  const lists = await fetchOptionLists();
+  const listIdByKey = new Map();
+  const createdByName = new Map();
+  const updatedLists = new Set();
+  for (const f of fields) {
+    if (f.field_type !== 'select') continue;
+    const items = [...new Set((f.options || []).map((o) => o.trim()).filter(Boolean))];
+    if (f.option_list_id === NEW_OPTION_LIST) {
+      const name = (f.list_name || '').trim();
+      if (!name) throw userError('يرجى إدخال اسم القائمة الجديدة');
+      if (!createdByName.has(name)) {
+        if (lists.some((l) => l.name === name)) throw userError(`اسم القائمة "${name}" مستعمل، اختر اسماً آخر`);
+        createdByName.set(name, await createOptionList(name, items));
+      }
+      listIdByKey.set(f.field_key, createdByName.get(name));
+    } else {
+      const list = lists.find((l) => l.id === f.option_list_id);
+      if (!list) throw userError(`يرجى اختيار قائمة الاختيارات للحقل "${f.label_ar}"`);
+      if (!updatedLists.has(list.id) && !sameItems(list.items, items)) await replaceOptionListItems(list.id, items);
+      updatedLists.add(list.id);
+      listIdByKey.set(f.field_key, list.id);
+    }
+  }
+
+  // 2. definitions
+  const { data: defs, error: defsErr } = await supabase.from('field_definitions').select('*');
+  if (defsErr) throw defsErr;
+  const defByKey = new Map(defs.map((d) => [d.field_key, d]));
+  const toCreate = [];
+  for (const f of fields) {
+    const def = defByKey.get(f.field_key);
+    if (!def) {
+      toCreate.push({
+        field_key: f.field_key,
+        label_ar: f.label_ar,
+        field_type: f.field_type,
+        placeholder_ar: f.placeholder_ar || '',
+        option_list_id: f.field_type === 'select' ? listIdByKey.get(f.field_key) : null,
+      });
+    } else if (def.field_type !== f.field_type) {
+      throw userError(`مفتاح الحقل "${f.field_key}" مستعمل بنوع مختلف في وثائق أخرى`);
+    } else if (f.field_type === 'select' && def.option_list_id !== listIdByKey.get(f.field_key)) {
+      throw userError(`الحقل "${f.field_key}" مستعمل في وثائق أخرى بقائمة اختيارات مختلفة`);
+    }
+  }
+  if (toCreate.length) {
+    const { data: created, error: createErr } = await supabase.from('field_definitions').insert(toCreate).select();
+    if (createErr) throw createErr;
+    created.forEach((d) => defByKey.set(d.field_key, d));
+  }
+
+  // 3. links: keep the label / placeholder only where they differ from the definition's
+  const rows = fields.map((f, i) => {
+    const def = defByKey.get(f.field_key);
+    const placeholder = f.placeholder_ar || '';
+    return {
+      document_type_id: documentTypeId,
+      field_id: def.id,
+      label_ar: f.label_ar !== def.label_ar ? f.label_ar : null,
+      placeholder_ar: placeholder !== def.placeholder_ar ? placeholder : null,
+      is_required: f.is_required,
+      sort_order: i,
+    };
+  });
+  const { data: existing, error: existingErr } = await supabase
+    .from('document_type_fields')
+    .select('id, field_id')
+    .eq('document_type_id', documentTypeId);
+  if (existingErr) throw existingErr;
+  if (rows.length) {
+    const { error: upErr } = await supabase
+      .from('document_type_fields')
+      .upsert(rows, { onConflict: 'document_type_id,field_id' });
+    if (upErr) throw upErr;
+  }
+  const kept = new Set(rows.map((r) => r.field_id));
+  const removedIds = existing.filter((r) => !kept.has(r.field_id)).map((r) => r.id);
+  if (removedIds.length) {
+    const { error: delErr } = await supabase.from('document_type_fields').delete().in('id', removedIds);
+    if (delErr) throw delErr;
+  }
 }
 
 export async function adminFetchSubmissions(documentTypeId, limit = 50) {
