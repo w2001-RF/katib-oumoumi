@@ -94,8 +94,17 @@ export class SupabaseAgentStore implements AgentStore {
   }
 
   async saveConversation(conv: Conversation) {
-    const { id, user_id: _userId, ...rest } = conv;
-    check(await this.db.from('agent_conversations').update({ ...rest, updated_at: new Date().toISOString() }).eq('id', id));
+    const changes = {
+      status: conv.status,
+      document_type_id: conv.document_type_id,
+      candidate_ids: conv.candidate_ids,
+      field_values: conv.field_values,
+      field_summaries: conv.field_summaries,
+      skipped_keys: conv.skipped_keys,
+      asked_keys: conv.asked_keys,
+      updated_at: new Date().toISOString(),
+    };
+    check(await this.db.from('agent_conversations').update(changes).eq('id', conv.id));
   }
 
   async cancelConversations(userId: string) {

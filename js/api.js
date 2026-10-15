@@ -138,12 +138,8 @@ export function onAuthStateChange(callback) {
 
 // --- Admin writes ---------------------------------------------------------------
 
-export async function adminFetchDocumentType(id) {
-  assertClient();
-  const { data, error } = await supabase.from('document_types').select('*').eq('id', id).single();
-  if (error) throw error;
-  return data;
-}
+// Same query as the public one: RLS returns unpublished documents to the admin.
+export const adminFetchDocumentType = fetchDocumentType;
 
 export async function adminFetchAllDocumentTypes() {
   assertClient();
@@ -277,60 +273,100 @@ const sameItems = (a, b) => a.length === b.length && a.every((v, i) => v === b[i
 //              options, option_list_id, list_name }] in display order.
 export async function adminReplaceFields(documentTypeId, fields) {
   assertClient();
+  const listIdByKey = await saveFieldOptionLists(fields);
+  const defByKey = await ensureFieldDefinitions(fields, listIdByKey);
+  await replaceDocumentFieldLinks(documentTypeId, fields, defByKey);
+}
 
-  // 1. dropdown lists
-  const lists = await fetchOptionLists();
-  const listIdByKey = new Map();
-  const createdByName = new Map();
-  const updatedLists = new Set();
+// 1. dropdown lists: creates the new ones, updates the edited ones.
+// Returns field_key -> option list id for the 'select' fields.
+async function saveFieldOptionLists(fields) {
+  const plan = planOptionLists(fields, await fetchOptionLists()); // validates, writes nothing
+  const newNames = [...plan.toCreate.keys()];
+  const newIds = await Promise.all(newNames.map((name) => createOptionList(name, plan.toCreate.get(name))));
+  const createdByName = new Map(newNames.map((name, i) => [name, newIds[i]]));
+  await Promise.all([...plan.toUpdate].map(([listId, items]) => replaceOptionListItems(listId, items)));
+  return new Map(plan.links.map(({ key, listId, newName }) => [key, listId ?? createdByName.get(newName)]));
+}
+
+// What saving the fields' lists requires: lists to create (by name, once
+// even when several fields share one), lists whose items changed (the
+// first field using a list decides its items), and each field's list.
+function planOptionLists(fields, lists) {
+  const plan = { toCreate: new Map(), toUpdate: new Map(), seen: new Set(), links: [] };
   for (const f of fields) {
     if (f.field_type !== 'select') continue;
     const items = [...new Set((f.options || []).map((o) => o.trim()).filter(Boolean))];
-    if (f.option_list_id === NEW_OPTION_LIST) {
-      const name = (f.list_name || '').trim();
-      if (!name) throw userError('يرجى إدخال اسم القائمة الجديدة');
-      if (!createdByName.has(name)) {
-        if (lists.some((l) => l.name === name)) throw userError(`اسم القائمة "${name}" مستعمل، اختر اسماً آخر`);
-        createdByName.set(name, await createOptionList(name, items));
-      }
-      listIdByKey.set(f.field_key, createdByName.get(name));
-    } else {
-      const list = lists.find((l) => l.id === f.option_list_id);
-      if (!list) throw userError(`يرجى اختيار قائمة الاختيارات للحقل "${f.label_ar}"`);
-      if (!updatedLists.has(list.id) && !sameItems(list.items, items)) await replaceOptionListItems(list.id, items);
-      updatedLists.add(list.id);
-      listIdByKey.set(f.field_key, list.id);
-    }
+    plan.links.push(
+      f.option_list_id === NEW_OPTION_LIST
+        ? { key: f.field_key, newName: planNewOptionList(f, items, lists, plan) }
+        : { key: f.field_key, listId: planExistingOptionList(f, items, lists, plan) },
+    );
   }
+  return plan;
+}
 
-  // 2. definitions
+function planNewOptionList(f, items, lists, plan) {
+  const name = (f.list_name || '').trim();
+  if (!name) throw userError('يرجى إدخال اسم القائمة الجديدة');
+  if (!plan.toCreate.has(name)) {
+    if (lists.some((l) => l.name === name)) throw userError(`اسم القائمة "${name}" مستعمل، اختر اسماً آخر`);
+    plan.toCreate.set(name, items);
+  }
+  return name;
+}
+
+function planExistingOptionList(f, items, lists, plan) {
+  const list = lists.find((l) => l.id === f.option_list_id);
+  if (!list) throw userError(`يرجى اختيار قائمة الاختيارات للحقل "${f.label_ar}"`);
+  if (!plan.seen.has(list.id) && !sameItems(list.items, items)) plan.toUpdate.set(list.id, items);
+  plan.seen.add(list.id);
+  return list.id;
+}
+
+function newDefinitionRow(f, listIdByKey) {
+  return {
+    field_key: f.field_key,
+    label_ar: f.label_ar,
+    field_type: f.field_type,
+    placeholder_ar: f.placeholder_ar || '',
+    option_list_id: f.field_type === 'select' ? listIdByKey.get(f.field_key) : null,
+  };
+}
+
+// A shared definition is never changed from here: reusing a key with another
+// type or list is refused.
+function assertDefinitionReusable(def, f, listIdByKey) {
+  if (def.field_type !== f.field_type) {
+    throw userError(`مفتاح الحقل "${f.field_key}" مستعمل بنوع مختلف في وثائق أخرى`);
+  }
+  if (f.field_type === 'select' && def.option_list_id !== listIdByKey.get(f.field_key)) {
+    throw userError(`الحقل "${f.field_key}" مستعمل في وثائق أخرى بقائمة اختيارات مختلفة`);
+  }
+}
+
+// 2. definitions: reuses the existing one of each key, creates the missing
+// ones. Returns field_key -> definition row.
+async function ensureFieldDefinitions(fields, listIdByKey) {
   const { data: defs, error: defsErr } = await supabase.from('field_definitions').select('*');
   if (defsErr) throw defsErr;
   const defByKey = new Map(defs.map((d) => [d.field_key, d]));
   const toCreate = [];
   for (const f of fields) {
     const def = defByKey.get(f.field_key);
-    if (!def) {
-      toCreate.push({
-        field_key: f.field_key,
-        label_ar: f.label_ar,
-        field_type: f.field_type,
-        placeholder_ar: f.placeholder_ar || '',
-        option_list_id: f.field_type === 'select' ? listIdByKey.get(f.field_key) : null,
-      });
-    } else if (def.field_type !== f.field_type) {
-      throw userError(`مفتاح الحقل "${f.field_key}" مستعمل بنوع مختلف في وثائق أخرى`);
-    } else if (f.field_type === 'select' && def.option_list_id !== listIdByKey.get(f.field_key)) {
-      throw userError(`الحقل "${f.field_key}" مستعمل في وثائق أخرى بقائمة اختيارات مختلفة`);
-    }
+    if (def) assertDefinitionReusable(def, f, listIdByKey);
+    else toCreate.push(newDefinitionRow(f, listIdByKey));
   }
   if (toCreate.length) {
     const { data: created, error: createErr } = await supabase.from('field_definitions').insert(toCreate).select();
     if (createErr) throw createErr;
     created.forEach((d) => defByKey.set(d.field_key, d));
   }
+  return defByKey;
+}
 
-  // 3. links: keep the label / placeholder only where they differ from the definition's
+// 3. links: keep the label / placeholder only where they differ from the definition's
+async function replaceDocumentFieldLinks(documentTypeId, fields, defByKey) {
   const rows = fields.map((f, i) => {
     const def = defByKey.get(f.field_key);
     const placeholder = f.placeholder_ar || '';

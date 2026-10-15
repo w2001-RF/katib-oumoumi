@@ -19,7 +19,7 @@ import { isCancel, isYes, MSG } from './messages.ts';
 import { normalizeValue } from './normalize.ts';
 import type { AgentStore } from './store.ts';
 import { detectIntent, extractFields, type ExtractResult, phraseQuestion, rewriteFormal } from './tasks.ts';
-import type { AgentDocument, AgentUser, Conversation, IncomingMessage, TemplateField } from './types.ts';
+import type { AgentDocument, AgentUser, CatalogEntry, Conversation, IncomingMessage, TemplateField } from './types.ts';
 
 export interface AgentDeps {
   store: AgentStore;
@@ -61,32 +61,44 @@ export async function handleMessage(deps: AgentDeps, msg: IncomingMessage): Prom
 }
 
 async function route(ctx: Ctx, msg: IncomingMessage) {
-  const { store } = ctx.deps;
   const text = (msg.text ?? '').trim();
-
-  // Commands work in every state, before consent too.
-  if (text === '/forget') {
-    await store.forgetUser(ctx.user.id);
-    return say(ctx, MSG.forgotten, { voice: false });
-  }
-  if (text === '/help') return say(ctx, MSG.help, { voice: false });
-
+  if (await handleCommand(ctx, text)) return;
   // Nothing reaches an AI provider before the user agrees.
-  if (!ctx.user.consent_at) {
-    if (msg.action === 'consent:yes' || (text && isYes(text))) {
-      await store.setConsent(ctx.user.id);
-      return say(ctx, MSG.welcome);
-    }
-    const buttons = [[{ label: MSG.consentButton, action: 'consent:yes' }]];
-    return say(ctx, text === '/start' ? MSG.consent : `${MSG.consentNeeded}\n\n${MSG.consent}`, { buttons });
-  }
+  if (!ctx.user.consent_at) return handleConsent(ctx, text, msg.action);
   if (text === '/start') return say(ctx, MSG.welcome);
   if (isCancel(text)) {
-    await store.cancelConversations(ctx.user.id);
+    await ctx.deps.store.cancelConversations(ctx.user.id);
     return say(ctx, MSG.cancelled);
   }
   if (msg.unsupported) return say(ctx, MSG.unsupported);
+  return converse(ctx, msg);
+}
 
+// Commands that work in every state, before consent too. True when handled.
+async function handleCommand(ctx: Ctx, text: string): Promise<boolean> {
+  if (text === '/forget') {
+    await ctx.deps.store.forgetUser(ctx.user.id);
+    await say(ctx, MSG.forgotten, { voice: false });
+    return true;
+  }
+  if (text === '/help') {
+    await say(ctx, MSG.help, { voice: false });
+    return true;
+  }
+  return false;
+}
+
+async function handleConsent(ctx: Ctx, text: string, action?: string) {
+  if (action === 'consent:yes' || (text && isYes(text))) {
+    await ctx.deps.store.setConsent(ctx.user.id);
+    return say(ctx, MSG.welcome);
+  }
+  const buttons = [[{ label: MSG.consentButton, action: 'consent:yes' }]];
+  return say(ctx, text === '/start' ? MSG.consent : `${MSG.consentNeeded}\n\n${MSG.consent}`, { buttons });
+}
+
+async function converse(ctx: Ctx, msg: IncomingMessage) {
+  const { store } = ctx.deps;
   const input = await readInput(ctx, msg);
   if (!input) return;
 
@@ -131,42 +143,49 @@ async function readInput(ctx: Ctx, msg: IncomingMessage): Promise<Input | null> 
 
 // --- choosing the document --------------------------------------------------
 
+const MENU_NUMBER_RE = /^\d{1,2}$/;
+
+// A document picked from the last menu, by button or by its number.
+function pickedFromMenu(conv: Conversation, input: Input, action?: string): string | null {
+  if (action?.startsWith('doc:')) return action.slice(4);
+  if (!MENU_NUMBER_RE.test(input.text)) return null;
+  return conv.candidate_ids[Number(input.text) - 1] ?? null;
+}
+
 async function choosing(ctx: Ctx, conv: Conversation, input: Input, action?: string) {
-  const { store } = ctx.deps;
-  let docId: string | null = null;
-  let fromStory = false;
+  const picked = pickedFromMenu(conv, input, action);
+  if (picked) return startDocument(ctx, conv, picked, { text: '' });
+  if (!input.text) return say(ctx, input.image ? MSG.imageBeforeDocument : MSG.askWhichDocument);
 
-  if (action?.startsWith('doc:')) docId = action.slice(4);
-  const n = /^\d{1,2}$/.test(input.text) ? Number(input.text) : 0;
-  if (!docId && n && conv.candidate_ids[n - 1]) docId = conv.candidate_ids[n - 1];
-
-  if (!docId) {
-    if (!input.text) return say(ctx, input.image ? MSG.imageBeforeDocument : MSG.askWhichDocument);
-    await ctx.deps.channel.showActivity(ctx.chatId, 'typing');
-    const catalog = await store.listCatalog();
-    const intent = await detectIntent(ctx.deps.llm('fast'), input.text, catalog);
-    if (intent.document_id && intent.confidence >= INTENT_MIN_CONFIDENCE) {
-      docId = intent.document_id;
-      fromStory = true;
-    } else {
-      const ids = intent.candidate_ids.length ? intent.candidate_ids : catalog.slice(0, MAX_CHOICES).map((d) => d.id);
-      conv.candidate_ids = ids;
-      await store.saveConversation(conv);
-      const names = ids.map((id) => catalog.find((d) => d.id === id)?.name_ar ?? '');
-      const list = names.map((name, i) => `${i + 1}. ${name}`).join('\n');
-      const buttons: Button[][] = ids.map((id, i) => [{ label: `${i + 1}. ${names[i]}`, action: `doc:${id}` }]);
-      return say(ctx, `${intent.candidate_ids.length ? MSG.chooseDocument : MSG.noMatch}\n${list}`, { buttons });
-    }
+  await ctx.deps.channel.showActivity(ctx.chatId, 'typing');
+  const catalog = await ctx.deps.store.listCatalog();
+  const intent = await detectIntent(ctx.deps.llm('fast'), input.text, catalog);
+  if (intent.document_id && intent.confidence >= INTENT_MIN_CONFIDENCE) {
+    // The request that identified the document often already holds values
+    // ("my neighbour Ahmed floods my flat in Settat since March...").
+    return startDocument(ctx, conv, intent.document_id, input);
   }
+  return offerDocuments(ctx, conv, catalog, intent.candidate_ids);
+}
 
-  const doc = await store.getDocument(docId);
+async function offerDocuments(ctx: Ctx, conv: Conversation, catalog: CatalogEntry[], candidateIds: string[]) {
+  const ids = candidateIds.length ? candidateIds : catalog.slice(0, MAX_CHOICES).map((d) => d.id);
+  conv.candidate_ids = ids;
+  await ctx.deps.store.saveConversation(conv);
+  const names = ids.map((id) => catalog.find((d) => d.id === id)?.name_ar ?? '');
+  const list = names.map((name, i) => `${i + 1}. ${name}`).join('\n');
+  const buttons: Button[][] = ids.map((id, i) => [{ label: `${i + 1}. ${names[i]}`, action: `doc:${id}` }]);
+  const intro = candidateIds.length ? MSG.chooseDocument : MSG.noMatch;
+  return say(ctx, `${intro}\n${list}`, { buttons });
+}
+
+async function startDocument(ctx: Ctx, conv: Conversation, docId: string, input: Input) {
+  const doc = await ctx.deps.store.getDocument(docId);
   if (!doc) return say(ctx, MSG.askWhichDocument);
   Object.assign(conv, { status: 'collecting', document_type_id: doc.id, candidate_ids: [] });
   await prefillFromProfile(ctx, conv, doc);
   await say(ctx, MSG.chosen(doc.name_ar));
-  // The request that identified the document often already holds values
-  // ("my neighbour Ahmed floods my flat in Settat since March...").
-  return collecting(ctx, conv, doc, fromStory ? input : { text: '' });
+  return collecting(ctx, conv, doc, input);
 }
 
 async function prefillFromProfile(ctx: Ctx, conv: Conversation, doc: AgentDocument) {
@@ -212,24 +231,24 @@ async function extract(ctx: Ctx, doc: AgentDocument, fields: TemplateField[], as
 // good ones. Long texts are rewritten in formal Arabic. Returns the errors.
 async function apply(ctx: Ctx, conv: Conversation, doc: AgentDocument, result: ExtractResult): Promise<Record<string, string>> {
   const errors: Record<string, string> = {};
+  const longTexts: { field: TemplateField; value: string }[] = [];
   for (const [key, raw] of Object.entries(result.values)) {
     const field = doc.fields.find((f) => f.field_key === key);
     if (!field) continue;
     const value = normalizeValue(field, raw);
     const error = validateField(field, value);
-    if (error) {
-      errors[key] = error;
-      continue;
-    }
-    if (field.field_type === 'text') {
-      const rewritten = await rewriteFormal(ctx.deps.llm('main'), field.label_ar, doc.name_ar, value);
-      conv.field_values[key] = rewritten.formal_ar;
-      conv.field_summaries[key] = rewritten.darija_summary;
-    } else {
-      conv.field_values[key] = value;
-    }
-    conv.skipped_keys = conv.skipped_keys.filter((k) => k !== key);
+    if (error) errors[key] = error;
+    else if (field.field_type === 'text') longTexts.push({ field, value });
+    else conv.field_values[key] = value;
+    if (!error) conv.skipped_keys = conv.skipped_keys.filter((k) => k !== key);
   }
+  const rewritten = await Promise.all(
+    longTexts.map(({ field, value }) => rewriteFormal(ctx.deps.llm('main'), field.label_ar, doc.name_ar, value)),
+  );
+  longTexts.forEach(({ field }, i) => {
+    conv.field_values[field.field_key] = rewritten[i].formal_ar;
+    conv.field_summaries[field.field_key] = rewritten[i].darija_summary;
+  });
   for (const key of result.skipped) {
     const field = doc.fields.find((f) => f.field_key === key);
     if (!field || key in conv.field_values) continue;
@@ -280,8 +299,14 @@ async function question(ctx: Ctx, fields: TemplateField[], errors: Record<string
     console.warn('[agent] phraseQuestion failed, using fixed wording', e);
   }
   return fields
-    .map((f) => [errors[f.field_key], f.ask_prompt || `عطيني عافاك: ${f.label_ar}${f.placeholder_ar ? ` (${f.placeholder_ar})` : ''}`].filter(Boolean).join('\n'))
+    .map((f) => [errors[f.field_key], f.ask_prompt || fixedQuestion(f)].filter(Boolean).join('\n'))
     .join('\n');
+}
+
+// Used when the model is unavailable.
+function fixedQuestion(f: TemplateField): string {
+  const example = f.placeholder_ar ? ` (${f.placeholder_ar})` : '';
+  return `عطيني عافاك: ${f.label_ar}${example}`;
 }
 
 // --- confirming --------------------------------------------------------------
@@ -370,8 +395,9 @@ function today(ctx: Ctx): string {
   return ctx.deps.today ? ctx.deps.today() : new Date().toISOString().slice(0, 10);
 }
 
+// Emoji (with their variation selector), bullets and /commands are not read aloud.
 function forSpeech(text: string): string {
-  return text.replaceAll(/[\p{Extended_Pictographic}•✅✏️⏳📝👋👍😔]/gu, '').replaceAll(/\/\w+/g, '').trim();
+  return text.replaceAll(/\p{Extended_Pictographic}️?|•/gu, '').replaceAll(/\/\w+/g, '').trim();
 }
 
 // Always sends text (screen readers, records); adds a voice note when the

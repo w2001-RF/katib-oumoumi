@@ -1,5 +1,5 @@
 import { icon } from './utils/icons.js';
-import { navigate, currentPath } from './router.js';
+import { navigate } from './router.js';
 
 const NAV_ITEMS = [
   { path: '/', label: 'الرئيسية', iconName: 'home' },
@@ -26,11 +26,9 @@ export function isTabPath(path) {
 }
 
 export function renderHeader({ title, showBack = false, showSearch = false, rightSlot = '' }) {
-  const left = showBack
-    ? `<button class="icon-btn" data-action="back" aria-label="رجوع">${icon('arrowRight')}</button>`
-    : showSearch
-    ? `<button class="icon-btn" data-action="search" aria-label="بحث">${icon('search')}</button>`
-    : '<span class="spacer"></span>';
+  let left = '<span class="spacer"></span>';
+  if (showBack) left = `<button class="icon-btn" data-action="back" aria-label="رجوع">${icon('arrowRight')}</button>`;
+  else if (showSearch) left = `<button class="icon-btn" data-action="search" aria-label="بحث">${icon('search')}</button>`;
   const right = rightSlot || '<span class="spacer"></span>';
   return `<header class="app-header">
     ${left}

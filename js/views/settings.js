@@ -1,6 +1,5 @@
 import { icon } from '../utils/icons.js';
 import { renderHeader, renderBottomNav, showToast } from '../ui.js';
-import { navigate } from '../router.js';
 
 const APP_VERSION = 'v1.0.0';
 const CONTACT_EMAIL = 'contact@katibomoumi.com';

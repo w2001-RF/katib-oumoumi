@@ -20,10 +20,15 @@ export interface IntentResult {
   candidate_ids: string[];
 }
 
+function describeDocument(d: CatalogEntry): string {
+  const parts = [d.name_ar];
+  if (d.description_ar) parts.push(`— ${d.description_ar}`);
+  if (d.keywords) parts.push(`[${d.keywords}]`);
+  return parts.join(' ');
+}
+
 export async function detectIntent(llm: LLM, userText: string, catalog: CatalogEntry[]): Promise<IntentResult> {
-  const list = catalog
-    .map((d, i) => `d${i + 1}: ${d.name_ar}${d.description_ar ? ` — ${d.description_ar}` : ''}${d.keywords ? ` [${d.keywords}]` : ''}`)
-    .join('\n');
+  const list = catalog.map((d, i) => `d${i + 1}: ${describeDocument(d)}`).join('\n');
   const res = await llm.json<{ document: string | null; confidence: number; candidates: string[] }>(
     {
       temperature: 0,
@@ -104,8 +109,10 @@ export async function extractFields(llm: LLM, input: ExtractInput): Promise<Extr
   const content: ContentPart[] = [];
   if (input.text) content.push({ type: 'text', text: input.text });
   if (input.image) {
-    content.push({ type: 'text', text: '(Attached image: may be a national ID card (CNIE), a letter or a notice.)' });
-    content.push({ type: 'image_url', image_url: { url: toDataUrl(input.image.data, input.image.mime) } });
+    content.push(
+      { type: 'text', text: '(Attached image: may be a national ID card (CNIE), a letter or a notice.)' },
+      { type: 'image_url', image_url: { url: toDataUrl(input.image.data, input.image.mime) } },
+    );
   }
 
   const res = await llm.json<{ values: { id: string; value: string }[]; skipped: string[] }>(

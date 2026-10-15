@@ -37,6 +37,7 @@ export async function renderReady(container, params) {
       fetchTemplateFields(entry.documentTypeId),
     ]);
   } catch (e) {
+    console.error(e);
     container.querySelector('#actions-slot').innerHTML = `<p class="small-note">تعذر تحميل قالب الوثيقة.</p>`;
     return;
   }
@@ -92,6 +93,7 @@ export async function renderReady(container, params) {
         exportAsWord(filledHtml, filename);
         showToast('تم تحميل الوثيقة بصيغة Word');
       } catch (e) {
+        console.error(e);
         showToast('تعذر تحميل الوثيقة');
       }
     });
@@ -102,6 +104,7 @@ export async function renderReady(container, params) {
         const mode = await exportAsPdf(filledHtml, filename, blob);
         showToast(mode === 'print' ? 'اختر "حفظ بصيغة PDF" من نافذة الطباعة' : 'تم تحميل الوثيقة بصيغة PDF');
       } catch (e) {
+        console.error(e);
         showToast('تعذر تحميل الوثيقة');
       }
     });

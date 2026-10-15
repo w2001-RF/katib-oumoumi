@@ -66,6 +66,7 @@ export async function renderDocForm(container, params) {
   try {
     [docType, fields] = await Promise.all([fetchDocumentType(params.id), fetchTemplateFields(params.id)]);
   } catch (e) {
+    console.error(e);
     container.querySelector('#form-main').innerHTML =
       `<p class="small-note" style="text-align:center;padding:20px 0;">تعذر تحميل هذه الوثيقة.</p>`;
     return;
@@ -135,6 +136,7 @@ export async function renderDocForm(container, params) {
       });
       navigate(`/ready/${historyRecord.id}`);
     } catch (err) {
+      console.error(err);
       showToast('حدث خطأ أثناء توليد الوثيقة');
       submitBtn.disabled = false;
       submitBtn.innerHTML = `${icon('fileText')} توليد الوثيقة`;

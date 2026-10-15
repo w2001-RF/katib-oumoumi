@@ -12,7 +12,6 @@ export const supabase = supabaseReady
   : null;
 
 if (!supabaseReady) {
-  // eslint-disable-next-line no-console
   console.error(
     'Supabase غير مهيأ: تأكد من وجود supabase-config.js (انظر README.md و supabase-config.example.js).'
   );

@@ -66,6 +66,46 @@ function fieldRowHtml(field, optionLists) {
   </div>`;
 }
 
+// Wires the controls of one field row: type ↔ choices visibility, list ↔
+// items, and the remove button (`onRemove(rowId)`).
+function bindFieldRow(row, optionLists, onRemove) {
+  row.querySelector('.f-type').addEventListener('change', (e) => {
+    row.querySelector('.f-options-wrap').hidden = e.target.value !== 'select';
+  });
+  row.querySelector('.f-list').addEventListener('change', (e) => {
+    const isNewList = e.target.value === NEW_OPTION_LIST;
+    row.querySelector('.f-list-name').hidden = !isNewList;
+    row.querySelector('.f-list-warning').hidden = isNewList;
+    if (!isNewList) {
+      // show the chosen list's items; for a new list keep what is typed,
+      // so an existing list can serve as a starting point
+      row.querySelector('.f-options').value = optionLists.find((l) => l.id === e.target.value).items.join('\n');
+    }
+  });
+  row.querySelector('[data-remove-row]').addEventListener('click', () => onRemove(row.dataset.rowId));
+}
+
+// The first problem that prevents saving these fields, as a message for the
+// admin, or null when they can be saved.
+function fieldSaveError(f, optionLists) {
+  if (!f.field_key || !f.label_ar) return 'يرجى تعبئة مفتاح وتسمية كل حقل';
+  if (f.field_type === 'select' && !f.options.length) return `يرجى إضافة اختيارات للقائمة: ${f.label_ar}`;
+  if (f.option_list_id !== NEW_OPTION_LIST) return null;
+  if (!f.list_name) return `يرجى إدخال اسم القائمة الجديدة: ${f.label_ar}`;
+  if (optionLists.some((l) => l.name === f.list_name)) return `اسم القائمة "${f.list_name}" مستعمل، اختر اسماً آخر`;
+  return null;
+}
+
+function validateFieldsForSave(fields, optionLists) {
+  for (const f of fields) {
+    const error = fieldSaveError(f, optionLists);
+    if (error) return error;
+  }
+  const keys = fields.map((f) => f.field_key);
+  if (new Set(keys).size !== keys.length) return 'مفاتيح الحقول يجب أن تكون فريدة';
+  return null;
+}
+
 async function editorView(container, params) {
   const isNew = params.id === 'new';
   container.innerHTML = `
@@ -90,6 +130,7 @@ async function editorView(container, params) {
       ]);
     }
   } catch (e) {
+    console.error(e);
     container.querySelector('main').innerHTML = `<p class="small-note">تعذر تحميل البيانات.</p>`;
     return;
   }
@@ -164,25 +205,12 @@ async function editorView(container, params) {
     fieldsListEl.innerHTML = workingFields.map((f) => fieldRowHtml(f, optionLists)).join('') ||
       `<p class="small-note" style="margin-bottom:12px;">لا توجد حقول بعد.</p>`;
     enhanceSelects(fieldsListEl);
-    fieldsListEl.querySelectorAll('[data-row-id]').forEach((row) => {
-      row.querySelector('.f-type').addEventListener('change', (e) => {
-        row.querySelector('.f-options-wrap').hidden = e.target.value !== 'select';
-      });
-      row.querySelector('.f-list').addEventListener('change', (e) => {
-        const isNewList = e.target.value === NEW_OPTION_LIST;
-        row.querySelector('.f-list-name').hidden = !isNewList;
-        row.querySelector('.f-list-warning').hidden = isNewList;
-        if (!isNewList) {
-          // show the chosen list's items; for a new list keep what is typed,
-          // so an existing list can serve as a starting point
-          row.querySelector('.f-options').value = optionLists.find((l) => l.id === e.target.value).items.join('\n');
-        }
-      });
-      row.querySelector('[data-remove-row]').addEventListener('click', () => {
-        workingFields = readFieldsFromDom().filter((f) => f.rowId !== row.dataset.rowId);
-        paintFields();
-      });
-    });
+    fieldsListEl.querySelectorAll('[data-row-id]').forEach((row) => bindFieldRow(row, optionLists, removeRow));
+  }
+
+  function removeRow(rowId) {
+    workingFields = readFieldsFromDom().filter((f) => f.rowId !== rowId);
+    paintFields();
   }
   paintFields();
 
@@ -228,29 +256,9 @@ async function editorView(container, params) {
       return;
     }
     const currentFields = readFieldsFromDom();
-    for (const f of currentFields) {
-      if (!f.field_key || !f.label_ar) {
-        showToast('يرجى تعبئة مفتاح وتسمية كل حقل');
-        return;
-      }
-      if (f.field_type === 'select' && !f.options.length) {
-        showToast(`يرجى إضافة اختيارات للقائمة: ${f.label_ar}`);
-        return;
-      }
-      if (f.option_list_id === NEW_OPTION_LIST) {
-        if (!f.list_name) {
-          showToast(`يرجى إدخال اسم القائمة الجديدة: ${f.label_ar}`);
-          return;
-        }
-        if (optionLists.some((l) => l.name === f.list_name)) {
-          showToast(`اسم القائمة "${f.list_name}" مستعمل، اختر اسماً آخر`);
-          return;
-        }
-      }
-    }
-    const keys = currentFields.map((f) => f.field_key);
-    if (new Set(keys).size !== keys.length) {
-      showToast('مفاتيح الحقول يجب أن تكون فريدة');
+    const fieldsError = validateFieldsForSave(currentFields, optionLists);
+    if (fieldsError) {
+      showToast(fieldsError);
       return;
     }
 
@@ -279,6 +287,7 @@ async function editorView(container, params) {
       showToast('تم حفظ الوثيقة بنجاح');
       navigate('/admin');
     } catch (e) {
+      console.error(e);
       showToast(e.userMessage || 'تعذر حفظ الوثيقة');
       saveBtn.disabled = false;
       saveBtn.innerHTML = `${icon('fileText')} حفظ الوثيقة`;
