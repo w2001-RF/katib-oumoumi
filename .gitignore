@@ -5,3 +5,10 @@ supabase-config.js
 .DS_Store
 Thumbs.db
 *.log
+
+# Agent secrets and local tooling output
+.env
+*.env
+!*.env.example
+coverage/
+.scannerwork/
