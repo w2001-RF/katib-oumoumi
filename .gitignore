@@ -12,3 +12,6 @@ Thumbs.db
 !*.env.example
 coverage/
 .scannerwork/
+
+
+supabase/.temp/*
