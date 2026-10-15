@@ -62,6 +62,15 @@ curl "https://api.telegram.org/bot<TOKEN>/setWebhook" \
 **PDF**: شغّل حاوية Gotenberg (`docker run -p 3000:3000 gotenberg/gotenberg:8`) على Cloud Run أو Fly.io أو VPS،
 وحط رابطها في `PDF_SERVICE_URL`. بدونها، البوت كيرسل ملف `.html` قابل للطباعة.
 
+**تغيير النموذج**: المزودون كيحيدو النماذج القديمة (مثلاً `gemini-2.5-flash` ما بقاش متاح للمفاتيح الجديدة).
+إلا بان فالـ Logs خطأ `HTTP 404 ... model not found`، بدّل غير السر، بلا ما تعاود النشر:
+
+```bash
+npx supabase secrets set LLM_MODEL=gemini-3.8-flash
+```
+
+باش ما يتوقفش البوت فهاد الحالة، زيد نموذج احتياطي (`LLM_FALLBACK_*`): خطأ 404 كيدوز تلقائياً للنموذج الاحتياطي.
+
 ## 3. الاختبارات والتقييم
 
 ```bash

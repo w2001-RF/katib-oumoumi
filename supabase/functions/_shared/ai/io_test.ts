@@ -5,14 +5,14 @@ import { getRenderer, GotenbergRenderer, HtmlFileRenderer, safeFilename, wrapDoc
 import { jsonResponse, withFetch } from '../testing/fakeFetch.ts';
 import { capabilitiesFor } from './models.ts';
 import { joinUrl, OpenAICompatibleLLM, trimTrailingSlashes } from './openaiCompatible.ts';
-import { getSTT, getTTS } from './registry.ts';
+import { getLLM, getSTT, getTTS } from './registry.ts';
 import { LLMAudioSTT, OpenAICompatibleSTT, OpenAICompatibleTTS } from './speech.ts';
 import { LLMError } from './types.ts';
 
 Deno.test('URL helpers', () => {
   assertEquals(trimTrailingSlashes('https://x/v1///'), 'https://x/v1');
   assertEquals(joinUrl('https://x/v1/', '/chat/completions'), 'https://x/v1/chat/completions');
-  assertEquals(joinUrl('http://ollama:11434/v1', 'audio/speech'), 'http://ollama:11434/v1/audio/speech');
+  assertEquals(joinUrl('https://ollama.local:11434/v1', 'audio/speech'), 'https://ollama.local:11434/v1/audio/speech');
 });
 
 Deno.test('LLM errors: retryable vs not, network failures, empty and part-based replies', async () => {
@@ -28,6 +28,11 @@ Deno.test('LLM errors: retryable vs not, network failures, empty and part-based 
   await withFetch(() => new Response('bad key', { status: 401 }), async () => {
     assertEquals((await assertRejects(() => llm.chat(req), LLMError)).retryable, false);
   });
+  await withFetch(() => new Response('{"error":{"code":404,"message":"model is no longer available"}}', { status: 404 }), async () => {
+    const e = await assertRejects(() => llm.chat(req), LLMError);
+    assertEquals([e.status, e.retryable], [404, true]);
+    assertStringIncludes(e.message, 'check LLM_*MODEL');
+  });
   await withFetch(() => Promise.reject(new TypeError('connection refused')), async () => {
     assertEquals((await assertRejects(() => llm.chat(req), LLMError)).retryable, true);
   });
@@ -41,6 +46,22 @@ Deno.test('LLM errors: retryable vs not, network failures, empty and part-based 
   await withFetch(() => jsonResponse({ choices: [{ message: { content: '{"a":1}' } }] }), async (reqs) => {
     assertEquals(await objectMode.json({ messages: [] }, {}, 's'), { a: 1 });
     assertEquals((reqs[0].json as { response_format: unknown }).response_format, { type: 'json_object' });
+  });
+});
+
+Deno.test('a retired main model hands over to the fallback model', async () => {
+  const env: Record<string, string> = {
+    LLM_BASE_URL: 'https://google/v1beta/openai/', LLM_API_KEY: 'g', LLM_MODEL: 'gemini-2.5-flash',
+    LLM_FALLBACK_BASE_URL: 'https://groq/v1', LLM_FALLBACK_API_KEY: 'q', LLM_FALLBACK_MODEL: 'llama-3.3-70b-versatile',
+  };
+  const llm = getLLM('main', (n) => env[n]);
+  const respond = (req: { url: string }) =>
+    req.url.startsWith('https://google')
+      ? new Response('{"error":{"code":404}}', { status: 404 })
+      : jsonResponse({ choices: [{ message: { content: 'من Groq' } }] });
+  await withFetch(respond, async (reqs) => {
+    assertEquals(await llm.chat({ messages: [{ role: 'user', content: 'سلام' }] }), 'من Groq');
+    assertEquals(reqs.map((r) => new URL(r.url).host), ['google', 'groq']);
   });
 });
 
