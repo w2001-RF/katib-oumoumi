@@ -1,0 +1,44 @@
+{
+  "_note": "FAKE data only. Add real (anonymised) Darija requests over time; aim for 40-60 cases.",
+  "catalog": [
+    { "id": "admin", "name_ar": "شكاية إدارية", "description_ar": "شكاية موجهة إلى السيد العامل أو الوالي أو رئيس مصلحة إدارية", "keywords": "شكاية، تظلم، الإدارة، العامل، القايد، الجماعة" },
+    { "id": "neighbour", "name_ar": "شكاية بسبب الجار", "description_ar": "شكاية بسبب ضرر أو إزعاج من الجار", "keywords": "الجار، ضجيج، صداع، تسرب الما" },
+    { "id": "poa", "name_ar": "توكيل عام", "description_ar": "", "keywords": "وكالة، توكيل، procuration" },
+    { "id": "work", "name_ar": "عقد عمل", "description_ar": "", "keywords": "عقد شغل، خدمة، أجير" },
+    { "id": "lease", "name_ar": "عقد كراء سكني", "description_ar": "", "keywords": "كراء، دار، شقة، مكري، مكتري" }
+  ],
+  "fields": [
+    { "field_key": "المدينة", "label_ar": "المدينة", "field_type": "select", "options": ["سطات", "الدار البيضاء", "الرباط", "مراكش"], "is_required": true },
+    { "field_key": "اسم مقدم الشكاية", "label_ar": "الاسم الكامل لمقدم الشكاية", "field_type": "varchar", "options": [], "is_required": true },
+    { "field_key": "رقم البطاقة الوطنية", "label_ar": "رقم البطاقة الوطنية", "field_type": "cin", "options": [], "is_required": true },
+    { "field_key": "رقم الهاتف", "label_ar": "رقم الهاتف", "field_type": "phone", "options": [], "is_required": true },
+    { "field_key": "البريد الإلكتروني", "label_ar": "البريد الإلكتروني", "field_type": "email", "options": [], "is_required": false },
+    { "field_key": "تاريخ الشكاية", "label_ar": "تاريخ الشكاية", "field_type": "date", "options": [], "is_required": true },
+    { "field_key": "تفاصيل الشكاية", "label_ar": "وقائع الشكاية بالتفصيل", "field_type": "text", "options": [], "is_required": true }
+  ],
+  "intent": [
+    { "text": "الجار ديالي كيدير الصداع كل ليلة وما خلاناش نعسو", "expect": "neighbour" },
+    { "text": "bghit nkri dari l wa7d drari", "expect": "lease" },
+    { "text": "بغيت نوكل خويا يمشي يقضي ليا الأوراق فالمقاطعة", "expect": "poa" },
+    { "text": "je veux porter plainte contre la commune, ils ne répondent pas à ma demande", "expect": "admin" },
+    { "text": "غادي نخدم عند واحد الشركة وبغيت عقد", "expect": "work" },
+    { "text": "بغيت نشري طوموبيل", "expect": null }
+  ],
+  "extraction": [
+    {
+      "text": "سميتي فاطمة الزهراء العلوي، لاكارط ديالي جي سبعة خمسة أربعة واحد صفر تلاتة، ساكنة فسطات، والتيليفون ديالي 06 12 34 56 78",
+      "expect": { "اسم مقدم الشكاية": "فاطمة الزهراء العلوي", "رقم البطاقة الوطنية": "G754103", "المدينة": "سطات", "رقم الهاتف": "0612345678" }
+    },
+    {
+      "text": "ما عنديش الإيميل. الشكاية ديال اليوم",
+      "asked": ["البريد الإلكتروني", "تاريخ الشكاية"],
+      "expect": { "تاريخ الشكاية": "{today}" },
+      "expectSkipped": ["البريد الإلكتروني"]
+    },
+    {
+      "text": "0698765432",
+      "asked": ["رقم الهاتف"],
+      "expect": { "رقم الهاتف": "0698765432" }
+    }
+  ]
+}

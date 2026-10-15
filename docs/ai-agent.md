@@ -1,0 +1,108 @@
+# الوكيل الذكي (بوت تيليغرام) — AI agent
+
+بوت يوجّد نفس الوثائق ديال التطبيق انطلاقاً من **وصف بالكتابة، رسالة صوتية، أو تصويرة**
+(البطاقة الوطنية، رسالة توصل بها المستخدم...)، ويسوّل على المعلومات الناقصة حتى تكمل الوثيقة،
+ثم يرسل ملف PDF. موجّه بالخصوص للأشخاص الأميين والمكفوفين.
+
+## المبدأ
+
+- **القوالب والحقول هي نفسها ديال التطبيق** (`document_types`, `v_template_fields`): أي وثيقة يضيفها
+  المسؤول من لوحة التحكم تصبح متاحة للبوت تلقائياً.
+- **الخادم هو اللي كيقرر، ماشي النموذج**: آلة حالات (`engine.ts`) كتعرف شنو ناقص من الحقول الإلزامية،
+  وكتتحقق من القيم بنفس `js/utils/validators.js` ديال التطبيق. النموذج كيدير غير 4 مهام بسيطة بجواب JSON
+  (`tasks.ts`): تحديد الوثيقة، استخراج القيم، صياغة السؤال، وإعادة صياغة الوقائع بالعربية الإدارية.
+  لهذا يخدم مع **أي نموذج**: Gemini المجاني، Llama على Groq، Qwen محلي على Ollama، Claude...
+- **واجهة واحدة لكل المزودين**: صيغة OpenAI Chat Completions، عبر 3 متغيرات (`LLM_BASE_URL`, `LLM_API_KEY`,
+  `LLM_MODEL`). انظر [`supabase/functions/.env.example`](../supabase/functions/.env.example).
+- **الموافقة أولاً**: ما كيتصيفط والو لأي مزود ذكاء اصطناعي قبل ما يوافق المستخدم. `/forget` كيمسح معلوماته.
+
+```
+supabase/functions/
+  telegram-webhook/index.ts     نقطة الدخول (Webhook)
+  _shared/ai/                   طبقة النماذج: واجهة موحدة، fallback، STT/TTS، القدرات
+  _shared/agent/                آلة الحالات، المهام الأربع، التخزين، النصوص الثابتة
+  _shared/channels/             تيليغرام (وواتساب لاحقاً بنفس الواجهة)
+  _shared/docs/render.ts        PDF عبر Gotenberg (Chromium)، أو ملف HTML قابل للطباعة
+eval/                           تقييم النماذج على حالات (بيانات وهمية)
+supabase/migrations/002_ai_agent.sql
+```
+
+## 1. قاعدة البيانات
+
+نفّذ مرة واحدة [`supabase/migrations/002_ai_agent.sql`](../supabase/migrations/002_ai_agent.sql) في SQL Editor.
+**إضافي فقط**: كينشئ جداول `agent_*` جديدة، وما كيبدّل حتى جدول أو عمود أو سياسة موجودة،
+فالتطبيق الحالي ما كيتأثرش. قابل لإعادة التنفيذ، وطريقة الحذف مكتوبة في رأس الملف.
+
+- `agent_document_hints`: كلمات مفتاحية لكل وثيقة، "شنو تدير من بعد"، و`self_fields` (الحقول اللي كتخص
+  المستخدم نفسه، باش نعاودو نستعملو معلوماته). مهم: `رقم البطاقة الوطنية` في «عقد عمل» هو ديال الأجير،
+  لذلك ما كيتملاش تلقائياً إلا في الوثائق اللي `self_fields` ديالها كتقول ذلك.
+- `agent_field_hints`: سؤال مكتوب باليد لحقل معيّن (اختياري).
+
+## 2. الإعداد والنشر
+
+```bash
+# 1) أسرار البوت والنماذج
+cp supabase/functions/.env.example supabase/functions/.env   # املأ القيم
+npx supabase login
+npx supabase link --project-ref <PROJECT_REF>
+npx supabase secrets set --env-file supabase/functions/.env
+
+# 2) النشر (--use-api ضروري: الدالة كتستورد js/utils من خارج supabase/functions)
+npx supabase functions deploy telegram-webhook --no-verify-jwt --use-api
+
+# 3) ربط تيليغرام (مرة واحدة)
+curl "https://api.telegram.org/bot<TOKEN>/setWebhook" \
+  -d "url=https://<PROJECT_REF>.supabase.co/functions/v1/telegram-webhook" \
+  -d "secret_token=<TELEGRAM_WEBHOOK_SECRET>" \
+  -d 'allowed_updates=["message","callback_query"]'
+```
+
+`--no-verify-jwt` ضروري لأن تيليغرام ما كيرسلش JWT ديال Supabase؛ الحماية هي `TELEGRAM_WEBHOOK_SECRET`.
+
+**PDF**: شغّل حاوية Gotenberg (`docker run -p 3000:3000 gotenberg/gotenberg:8`) على Cloud Run أو Fly.io أو VPS،
+وحط رابطها في `PDF_SERVICE_URL`. بدونها، البوت كيرسل ملف `.html` قابل للطباعة.
+
+## 3. الاختبارات والتقييم
+
+```bash
+# اختبارات (بدون شبكة ولا قاعدة بيانات)
+npx deno test --allow-env supabase/functions/_shared
+
+# تقييم نموذج على eval/cases.json (يستعمل نفس متغيرات LLM_*)
+npx deno run --allow-net --allow-env --allow-read --env-file=supabase/functions/.env eval/run.ts
+```
+
+قبل تغيير النموذج في الإنتاج، شغّل التقييم وقارن النتائج.
+
+## 4. الخصوصية (القانون 09-08)
+
+- **المستويات المجانية** (مثلاً Google AI Studio المجاني) قد تستعمل الطلبات لتحسين منتجاتها:
+  استعملها **للتطوير ببيانات وهمية فقط**. في الإنتاج: مستوى مدفوع بدون تدريب على البيانات، أو نموذج مفتوح
+  مستضاف عندك (Ollama / vLLM) باش ما تخرجش البيانات الشخصية من البنية ديالك.
+- يجب التصريح لدى **CNDP** بمعالجة البيانات (رقم البطاقة، العنوان، الصوت)، وذكر المزودين في رسالة الموافقة
+  (`messages.ts`).
+- البوت ما كيحتفظش بالصور ولا بالتسجيلات الصوتية: كتتحول لنص وكتتنسى.
+
+## 5. SonarQube
+
+الإعداد في [`sonar-project.properties`](../sonar-project.properties). على SonarQube محلي:
+
+```bash
+npx deno test --allow-env --coverage=coverage/raw supabase/functions/_shared
+npx deno coverage coverage/raw --lcov --output=coverage/lcov.info
+npx @sonar/scan -Dsonar.host.url=http://localhost:9000 -Dsonar.token=<TOKEN>
+```
+or with powershell
+```bash
+npx deno test --allow-env --coverage=coverage/raw supabase/functions/_shared
+npx deno coverage coverage/raw --lcov --output=coverage/lcov.info
+$env:SONAR_TOKEN = "<your token>"
+npx @sonar/scan "-Dsonar.host.url=http://localhost:9000"
+
+```
+
+## الخطوات القادمة
+
+- محوّل واتساب (Meta Cloud API) بنفس واجهة `Channel`.
+- زر الميكروفون في تطبيق الويب (نفس `engine.ts` عبر قناة `web`).
+- شاشة في لوحة المسؤول لتعديل `agent_document_hints` / `agent_field_hints` ومراجعة المحادثات.
