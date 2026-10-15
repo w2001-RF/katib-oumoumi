@@ -39,7 +39,14 @@ function check<T>(res: { data: T; error: { message: string } | null }): NonNulla
 export class SupabaseAgentStore implements AgentStore {
   private readonly db: SupabaseClient;
 
-  constructor(url = Deno.env.get('SUPABASE_URL'), serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')) {
+  /** `client` is for tests; by default it connects with the function's service role key. */
+  constructor(client?: SupabaseClient) {
+    if (client) {
+      this.db = client;
+      return;
+    }
+    const url = Deno.env.get('SUPABASE_URL');
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     if (!url || !serviceKey) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required');
     this.db = createClient(url, serviceKey, { auth: { persistSession: false } });
   }

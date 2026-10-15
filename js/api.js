@@ -373,8 +373,8 @@ async function replaceDocumentFieldLinks(documentTypeId, fields, defByKey) {
     return {
       document_type_id: documentTypeId,
       field_id: def.id,
-      label_ar: f.label_ar !== def.label_ar ? f.label_ar : null,
-      placeholder_ar: placeholder !== def.placeholder_ar ? placeholder : null,
+      label_ar: f.label_ar === def.label_ar ? null : f.label_ar,
+      placeholder_ar: placeholder === def.placeholder_ar ? null : placeholder,
       is_required: f.is_required,
       sort_order: i,
     };

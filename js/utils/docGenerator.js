@@ -25,10 +25,10 @@ function wrapForExport(bodyHtml, title) {
 }
 
 export function exportAsWord(bodyHtml, filename) {
-  if (!window.htmlDocx) throw new Error('مكتبة تصدير Word غير محمّلة');
+  if (!globalThis.htmlDocx) throw new Error('مكتبة تصدير Word غير محمّلة');
   const full = wrapForExport(bodyHtml, filename);
-  const blob = window.htmlDocx.asBlob(full, { orientation: 'portrait' });
-  window.saveAs(blob, `${filename}.docx`);
+  const blob = globalThis.htmlDocx.asBlob(full, { orientation: 'portrait' });
+  globalThis.saveAs(blob, `${filename}.docx`);
 }
 
 // --- PDF ---------------------------------------------------------------------
@@ -157,7 +157,7 @@ async function renderToCanvas(docEl, styleTag, height) {
 }
 
 function buildPdf(canvas, pageRanges) {
-  const pdf = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+  const pdf = new globalThis.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
   pageRanges.forEach(([from, to], i) => {
     if (i > 0) pdf.addPage();
     const slice = document.createElement('canvas');
@@ -182,7 +182,7 @@ async function layoutDocument(bodyHtml) {
       `<body style="margin:0;background:#fff;"><div class="katib-doc" dir="rtl" lang="ar">${bodyHtml}</div></body></html>`,
   );
   const frameDoc = frame.contentDocument;
-  if (frameDoc.fonts && frameDoc.fonts.ready) await frameDoc.fonts.ready;
+  if (frameDoc.fonts?.ready) await frameDoc.fonts.ready;
   return { frame, styleTag, docEl: frameDoc.querySelector('.katib-doc') };
 }
 
@@ -190,7 +190,7 @@ async function layoutDocument(bodyHtml) {
 // rasterize the document (some Safari versions taint foreignObject canvases)
 // — use printDocument() then.
 export async function generatePdfBlob(bodyHtml) {
-  if (!window.jspdf) throw new Error('مكتبة تصدير PDF غير محمّلة');
+  if (!globalThis.jspdf) throw new Error('مكتبة تصدير PDF غير محمّلة');
   const { frame, styleTag, docEl } = await layoutDocument(bodyHtml);
   try {
     const height = Math.ceil(docEl.getBoundingClientRect().height);
@@ -226,7 +226,7 @@ export async function exportAsPdf(bodyHtml, filename, pdfBlob) {
     await printDocument(bodyHtml, filename);
     return 'print';
   }
-  window.saveAs(blob, `${filename}.pdf`);
+  globalThis.saveAs(blob, `${filename}.pdf`);
   return 'download';
 }
 
@@ -244,8 +244,8 @@ export async function sharePdf(pdfBlob, filename, title) {
     await navigator.share({ files: [file], title });
     return 'shared';
   } catch (e) {
-    if (e && e.name === 'AbortError') return 'shared';
-    if (e && e.name === 'NotAllowedError') return 'retry';
+    if (e?.name === 'AbortError') return 'shared';
+    if (e?.name === 'NotAllowedError') return 'retry';
     throw e;
   }
 }

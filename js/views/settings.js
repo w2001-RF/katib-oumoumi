@@ -66,15 +66,15 @@ export async function renderSettings(container) {
   container.querySelector('#share-row').addEventListener('click', async () => {
     if (navigator.share) {
       try {
-        await navigator.share({ title: 'كاتب عمومي', text: 'وثائقك الإدارية في دقيقة واحدة', url: window.location.origin });
+        await navigator.share({ title: 'كاتب عمومي', text: 'وثائقك الإدارية في دقيقة واحدة', url: globalThis.location.origin });
       } catch {
         /* cancelled */
       }
     } else {
-      showToast('انسخ الرابط لمشاركته: ' + window.location.origin);
+      showToast('انسخ الرابط لمشاركته: ' + globalThis.location.origin);
     }
   });
   container.querySelector('#contact-row').addEventListener('click', () => {
-    window.location.href = `mailto:${CONTACT_EMAIL}`;
+    globalThis.location.href = `mailto:${CONTACT_EMAIL}`;
   });
 }

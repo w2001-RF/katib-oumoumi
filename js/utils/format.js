@@ -13,8 +13,8 @@ export function formatDateAr(isoDate) {
   const parts = String(isoDate).split('-');
   if (parts.length !== 3) return isoDate;
   const [y, m, d] = parts;
-  const day = parseInt(d, 10);
-  const monthIdx = parseInt(m, 10) - 1;
+  const day = Number.parseInt(d, 10);
+  const monthIdx = Number.parseInt(m, 10) - 1;
   const month = MOROCCAN_MONTHS[monthIdx] || m;
   return `${day} ${month} ${y}`;
 }
@@ -22,7 +22,7 @@ export function formatDateAr(isoDate) {
 // Short version used in list rows, e.g. history cards: "02:13 · 3 غشت 2026"
 export function formatDateTimeShort(dateInput) {
   const d = new Date(dateInput);
-  if (isNaN(d.getTime())) return '';
+  if (Number.isNaN(d.getTime())) return '';
   const hh = String(d.getHours()).padStart(2, '0');
   const mm = String(d.getMinutes()).padStart(2, '0');
   const day = d.getDate();
@@ -33,16 +33,16 @@ export function formatDateTimeShort(dateInput) {
 
 export function escapeHtml(str) {
   return String(str ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }
 
 // Turn plain-text user input into safe HTML, preserving line breaks.
 export function textToHtml(str) {
-  return escapeHtml(str).replace(/\n/g, '<br/>');
+  return escapeHtml(str).replaceAll('\n', '<br/>');
 }
 
 export function slugifyKey(label) {

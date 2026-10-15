@@ -32,11 +32,11 @@ function fieldRowHtml(field, optionLists) {
   <div class="admin-fieldrow" data-row-id="${field.rowId}">
     <div class="field">
       <label>مفتاح الحقل (placeholder)</label>
-      <input type="text" class="f-key" value="${(field.field_key || '').replace(/"/g, '&quot;')}" placeholder="مثال: اسم الموكل" />
+      <input type="text" class="f-key" value="${(field.field_key || '').replaceAll('"', '&quot;')}" placeholder="مثال: اسم الموكل" />
     </div>
     <div class="field">
       <label>التسمية الظاهرة للمستخدم</label>
-      <input type="text" class="f-label" value="${(field.label_ar || '').replace(/"/g, '&quot;')}" placeholder="اسم الموكل" />
+      <input type="text" class="f-label" value="${(field.label_ar || '').replaceAll('"', '&quot;')}" placeholder="اسم الموكل" />
     </div>
     <button type="button" class="icon-remove" data-remove-row aria-label="حذف الحقل">${icon('trash')}</button>
     <div class="field" style="grid-column:1/2;">
@@ -45,7 +45,7 @@ function fieldRowHtml(field, optionLists) {
     </div>
     <div class="field" style="grid-column:2/3;">
       <label>نص توضيحي (اختياري)</label>
-      <input type="text" class="f-placeholder" value="${(field.placeholder_ar || '').replace(/"/g, '&quot;')}" />
+      <input type="text" class="f-placeholder" value="${(field.placeholder_ar || '').replaceAll('"', '&quot;')}" />
     </div>
     <div class="field f-options-wrap" style="grid-column:1/4;" ${field.field_type === 'select' ? '' : 'hidden'}>
       <label>قائمة الاختيارات</label>
@@ -61,7 +61,7 @@ function fieldRowHtml(field, optionLists) {
       </p>
     </div>
     <label class="checkbox-row" style="grid-column:1/4;">
-      <input type="checkbox" class="f-required" ${field.is_required !== false ? 'checked' : ''} /> حقل إلزامي
+      <input type="checkbox" class="f-required" ${field.is_required === false ? '' : 'checked'} /> حقل إلزامي
     </label>
   </div>`;
 }
@@ -145,11 +145,11 @@ async function editorView(container, params) {
       <form id="meta-form">
         <div class="field">
           <label>اسم نوع الوثيقة</label>
-          <input type="text" name="name_ar" required value="${docType ? docType.name_ar.replace(/"/g, '&quot;') : ''}" />
+          <input type="text" name="name_ar" required value="${docType ? docType.name_ar.replaceAll('"', '&quot;') : ''}" />
         </div>
         <div class="field">
           <label>وصف مختصر</label>
-          <input type="text" name="description_ar" value="${docType ? (docType.description_ar || '').replace(/"/g, '&quot;') : ''}" />
+          <input type="text" name="description_ar" value="${docType ? (docType.description_ar || '').replaceAll('"', '&quot;') : ''}" />
         </div>
         <div class="field">
           <label>التصنيف</label>
@@ -165,7 +165,7 @@ async function editorView(container, params) {
         <div class="field">
           <label>الأيقونة</label>
           <select name="icon">
-            ${ICON_CHOICES.map((i) => `<option value="${i}" ${docType && docType.icon === i ? 'selected' : ''}>${i}</option>`).join('')}
+            ${ICON_CHOICES.map((i) => `<option value="${i}" ${docType?.icon === i ? 'selected' : ''}>${i}</option>`).join('')}
           </select>
         </div>
         <label class="checkbox-row">

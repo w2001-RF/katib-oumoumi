@@ -34,7 +34,7 @@ export function sampleValuesFor(fields) {
   };
   const values = {};
   for (const f of fields) {
-    values[f.field_key] = (f.field_type === 'select' && f.options && f.options[0]) || samples[f.field_type] || 'قيمة';
+    values[f.field_key] = (f.field_type === 'select' && f.options?.[0]) || samples[f.field_type] || 'قيمة';
   }
   return values;
 }

@@ -10,7 +10,7 @@ import { enhanceSelects } from '../utils/searchableSelect.js';
 // Value of a field's control; for a dropdown set to «أخرى», the typed text.
 function readFieldValue(wrap) {
   const select = wrap.querySelector('select');
-  if (select && select.value === OTHER_OPTION) return wrap.querySelector('.other-input').value;
+  if (select?.value === OTHER_OPTION) return wrap.querySelector('.other-input').value;
   return wrap.querySelector('input, textarea, select').value;
 }
 

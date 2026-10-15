@@ -89,7 +89,7 @@ img, svg { display: block; }
 }
 
 .app-header .icon-btn {
-  background: rgba(255,255,255,0.08);
+  background: #293a58; /* 8% white over --navy-800, solid so contrast is measurable */
   border: none;
   color: #fff;
   width: 34px;

@@ -3,9 +3,9 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 // window.SUPABASE_CONFIG is generated at deploy time by
 // .github/workflows/deploy-pages.yml (see supabase-config.example.js for
 // local development).
-const config = window.SUPABASE_CONFIG;
+const config = globalThis.SUPABASE_CONFIG;
 
-export const supabaseReady = !!(config && config.url && config.anonKey);
+export const supabaseReady = !!(config?.url && config?.anonKey);
 
 export const supabase = supabaseReady
   ? createClient(config.url, config.anonKey)

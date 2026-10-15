@@ -67,7 +67,7 @@ export async function renderHistory(container) {
           ]);
           return renderTemplate(docType.template_body, fields, entry.data);
         }),
-        filename: entry.documentTypeName.replace(/\s+/g, '_'),
+        filename: entry.documentTypeName.replaceAll(/\s+/g, '_'),
         title: entry.documentTypeName,
       });
     });

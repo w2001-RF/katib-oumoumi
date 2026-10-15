@@ -41,7 +41,7 @@ export function attachHeaderBack(container, fallbackPath = '/') {
   const btn = container.querySelector('[data-action="back"]');
   if (btn) {
     btn.addEventListener('click', () => {
-      if (window.history.length > 1) window.history.back();
+      if (globalThis.history.length > 1) globalThis.history.back();
       else navigate(fallbackPath);
     });
   }

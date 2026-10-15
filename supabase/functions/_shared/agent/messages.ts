@@ -52,7 +52,7 @@ const TRAILING_PUNCTUATION = new Set(['.', '!', '?', '؟']);
 
 function asAnswer(text: string): string {
   let s = text.trim().toLowerCase();
-  while (s && TRAILING_PUNCTUATION.has(s.at(-1)!)) s = s.slice(0, -1);
+  while (TRAILING_PUNCTUATION.has(s.at(-1) ?? '')) s = s.slice(0, -1);
   return s.trim();
 }
 

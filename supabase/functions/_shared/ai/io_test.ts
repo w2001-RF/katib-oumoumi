@@ -1,0 +1,125 @@
+// Speech, PDF rendering and provider wiring against a scripted fetch.
+// Run: npx deno test --allow-env supabase/functions/_shared
+import { assertEquals, assertRejects, assertStringIncludes } from 'jsr:@std/assert@1';
+import { getRenderer, GotenbergRenderer, HtmlFileRenderer, safeFilename, wrapDocumentHtml } from '../docs/render.ts';
+import { jsonResponse, withFetch } from '../testing/fakeFetch.ts';
+import { capabilitiesFor } from './models.ts';
+import { joinUrl, OpenAICompatibleLLM, trimTrailingSlashes } from './openaiCompatible.ts';
+import { getSTT, getTTS } from './registry.ts';
+import { LLMAudioSTT, OpenAICompatibleSTT, OpenAICompatibleTTS } from './speech.ts';
+import { LLMError } from './types.ts';
+
+Deno.test('URL helpers', () => {
+  assertEquals(trimTrailingSlashes('https://x/v1///'), 'https://x/v1');
+  assertEquals(joinUrl('https://x/v1/', '/chat/completions'), 'https://x/v1/chat/completions');
+  assertEquals(joinUrl('http://ollama:11434/v1', 'audio/speech'), 'http://ollama:11434/v1/audio/speech');
+});
+
+Deno.test('LLM errors: retryable vs not, network failures, empty and part-based replies', async () => {
+  const llm = new OpenAICompatibleLLM({ baseUrl: 'https://x/v1', apiKey: '', model: 'm', caps: capabilitiesFor('m') });
+  const req = { messages: [{ role: 'user' as const, content: 'hi' }], maxTokens: 10 };
+
+  await withFetch(() => new Response('slow down', { status: 429 }), async (reqs) => {
+    const e = await assertRejects(() => llm.chat(req), LLMError);
+    assertEquals([e.status, e.retryable], [429, true]);
+    assertEquals(reqs[0].init.headers, { 'Content-Type': 'application/json' }, 'no Authorization without a key');
+    assertEquals((reqs[0].json as { max_tokens: number }).max_tokens, 10);
+  });
+  await withFetch(() => new Response('bad key', { status: 401 }), async () => {
+    assertEquals((await assertRejects(() => llm.chat(req), LLMError)).retryable, false);
+  });
+  await withFetch(() => Promise.reject(new TypeError('connection refused')), async () => {
+    assertEquals((await assertRejects(() => llm.chat(req), LLMError)).retryable, true);
+  });
+  await withFetch(() => jsonResponse({ choices: [{ message: { content: [{ text: 'a' }, { text: 'b' }] } }] }), async () => {
+    assertEquals(await llm.chat(req), 'ab');
+  });
+  await withFetch(() => jsonResponse({ choices: [] }), async () => {
+    await assertRejects(() => llm.chat(req), LLMError, 'Empty reply');
+  });
+  const objectMode = new OpenAICompatibleLLM({ baseUrl: 'https://x', apiKey: 'k', model: 'llama-3.3-70b', caps: capabilitiesFor('llama-3.3-70b') });
+  await withFetch(() => jsonResponse({ choices: [{ message: { content: '{"a":1}' } }] }), async (reqs) => {
+    assertEquals(await objectMode.json({ messages: [] }, {}, 's'), { a: 1 });
+    assertEquals((reqs[0].json as { response_format: unknown }).response_format, { type: 'json_object' });
+  });
+});
+
+Deno.test('speech-to-text over /audio/transcriptions', async () => {
+  const stt = new OpenAICompatibleSTT('https://groq/v1', 'k', 'whisper-large-v3', 'ar');
+  await withFetch(() => jsonResponse({ text: ' سلام عليكم ' }), async (reqs) => {
+    assertEquals(await stt.transcribe(new Uint8Array([1]), 'audio/ogg; codecs=opus'), 'سلام عليكم');
+    assertEquals(reqs[0].url, 'https://groq/v1/audio/transcriptions');
+    assertEquals([reqs[0].form?.get('model'), reqs[0].form?.get('language')], ['whisper-large-v3', 'ar']);
+    assertEquals((reqs[0].form?.get('file') as File).name, 'voice.ogg');
+  });
+  await withFetch(() => jsonResponse({}), async (reqs) => {
+    assertEquals(await new OpenAICompatibleSTT('https://x', '', 'w').transcribe(new Uint8Array([1]), 'audio/x-unknown'), '');
+    assertEquals(reqs[0].form?.get('language'), null);
+  });
+  await withFetch(() => new Response('down', { status: 503 }), async () => {
+    assertEquals((await assertRejects(() => stt.transcribe(new Uint8Array([1]), 'audio/ogg'), LLMError)).retryable, true);
+  });
+});
+
+Deno.test('a model that hears audio can transcribe', async () => {
+  const llm = new OpenAICompatibleLLM({ baseUrl: 'https://g', apiKey: 'k', model: 'gemini-2.5-flash', caps: capabilitiesFor('gemini-2.5-flash') });
+  await withFetch(() => jsonResponse({ choices: [{ message: { content: ' بغيت شكاية ' } }] }), async (reqs) => {
+    assertEquals(await new LLMAudioSTT(llm).transcribe(new Uint8Array([1, 2]), 'audio/mpeg'), 'بغيت شكاية');
+    const part = (reqs[0].json as { messages: { content: unknown }[] }).messages[1].content as { input_audio: { format: string } }[];
+    assertEquals(part[0].input_audio.format, 'mp3');
+  });
+});
+
+Deno.test('text-to-speech over /audio/speech', async () => {
+  await withFetch(() => new Response(new Uint8Array([9])), async (reqs) => {
+    const voice = await new OpenAICompatibleTTS('https://t', 'k', 'tts', 'nova').speak('مرحبا');
+    assertEquals([voice.mime, voice.voice, voice.data], ['audio/ogg', true, new Uint8Array([9])]);
+    assertEquals((reqs[0].json as { response_format: string }).response_format, 'opus');
+    const mp3 = await new OpenAICompatibleTTS('https://t', '', 'tts', 'nova', 'mp3').speak('x');
+    assertEquals([mp3.mime, mp3.voice], ['audio/mpeg', false]);
+    assertEquals((await new OpenAICompatibleTTS('https://t', '', 'tts', 'nova', 'wav').speak('x')).mime, 'audio/wav');
+  });
+  await withFetch(() => new Response('no', { status: 400 }), async () => {
+    await assertRejects(() => new OpenAICompatibleTTS('https://t', '', 'tts', 'v').speak('x'), LLMError);
+  });
+});
+
+Deno.test('registry: speech providers from env, or the model itself, or none', () => {
+  const env = (vars: Record<string, string>) => (n: string) => vars[n];
+  const main = { LLM_BASE_URL: 'https://x', LLM_MODEL: 'llama-3.3-70b' };
+  assertEquals(getSTT(env({ ...main, STT_BASE_URL: 'https://g', STT_MODEL: 'w' })) instanceof OpenAICompatibleSTT, true);
+  assertEquals(getSTT(env({ LLM_BASE_URL: 'https://x', LLM_MODEL: 'gemini-2.5-flash' })) instanceof LLMAudioSTT, true);
+  assertEquals(getSTT(env(main)), null);
+  assertEquals(getTTS(env(main)), null);
+  assertEquals(getTTS(env({ TTS_BASE_URL: 'https://t', TTS_MODEL: 'tts' })) instanceof OpenAICompatibleTTS, true);
+});
+
+Deno.test('document HTML, file names and renderers', async () => {
+  const html = wrapDocumentHtml('<p>نص</p>', 'شكاية <b>');
+  assertStringIncludes(html, '<title>شكاية b</title>');
+  assertStringIncludes(html, 'size: A4');
+  assertEquals(safeFilename('عقد: كراء/سكني?'), 'عقد كراءسكني');
+  assertEquals(safeFilename('///'), 'document');
+
+  const asHtml = await new HtmlFileRenderer().render('<p>x</p>', 'وثيقة');
+  assertEquals([asHtml.filename, asHtml.mime], ['وثيقة.html', 'text/html']);
+
+  await withFetch(() => new Response(new Uint8Array([37, 80, 68, 70])), async (reqs) => {
+    const pdf = await new GotenbergRenderer('https://pdf.example/', 'user:pw').render('<p>x</p>', 'وثيقة');
+    assertEquals([pdf.filename, pdf.mime, pdf.data.length], ['وثيقة.pdf', 'application/pdf', 4]);
+    assertEquals(reqs[0].url, 'https://pdf.example/forms/chromium/convert/html');
+    assertEquals((reqs[0].init.headers as Record<string, string>).Authorization, `Basic ${btoa('user:pw')}`);
+  });
+  await withFetch(() => new Response('chromium crashed', { status: 503 }), async () => {
+    await assertRejects(() => new GotenbergRenderer('https://pdf.example').render('', 't'), Error, 'PDF service HTTP 503');
+  });
+
+  Deno.env.delete('PDF_SERVICE_URL');
+  assertEquals(getRenderer() instanceof HtmlFileRenderer, true);
+  Deno.env.set('PDF_SERVICE_URL', 'https://pdf.example');
+  try {
+    assertEquals(getRenderer() instanceof GotenbergRenderer, true);
+  } finally {
+    Deno.env.delete('PDF_SERVICE_URL');
+  }
+});

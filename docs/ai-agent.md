@@ -48,7 +48,7 @@ npx supabase link --project-ref <PROJECT_REF>
 npx supabase secrets set --env-file supabase/functions/.env
 
 # 2) النشر (--use-api ضروري: الدالة كتستورد js/utils من خارج supabase/functions)
-npx supabase functions deploy telegram-webhook --no-verify-jwt --use-api
+npx supabase functions deploy --use-api
 
 # 3) ربط تيليغرام (مرة واحدة)
 curl "https://api.telegram.org/bot<TOKEN>/setWebhook" \
@@ -57,7 +57,7 @@ curl "https://api.telegram.org/bot<TOKEN>/setWebhook" \
   -d 'allowed_updates=["message","callback_query"]'
 ```
 
-`--no-verify-jwt` ضروري لأن تيليغرام ما كيرسلش JWT ديال Supabase؛ الحماية هي `TELEGRAM_WEBHOOK_SECRET`.
+التحقق من JWT معطّل لهاد الدالة في [`supabase/config.toml`](../supabase/config.toml) (`verify_jwt = false`) لأن تيليغرام ما كيرسلش JWT ديال Supabase؛ الحماية هي `TELEGRAM_WEBHOOK_SECRET`.
 
 **PDF**: شغّل حاوية Gotenberg (`docker run -p 3000:3000 gotenberg/gotenberg:8`) على Cloud Run أو Fly.io أو VPS،
 وحط رابطها في `PDF_SERVICE_URL`. بدونها، البوت كيرسل ملف `.html` قابل للطباعة.
@@ -66,7 +66,7 @@ curl "https://api.telegram.org/bot<TOKEN>/setWebhook" \
 
 ```bash
 # اختبارات (بدون شبكة ولا قاعدة بيانات)
-npx deno test --allow-env supabase/functions/_shared
+npx deno test --config tests/deno.json --allow-env tests supabase/functions
 
 # تقييم نموذج على eval/cases.json (يستعمل نفس متغيرات LLM_*)
 npx deno run --allow-net --allow-env --allow-read --env-file=supabase/functions/.env eval/run.ts
@@ -88,13 +88,13 @@ npx deno run --allow-net --allow-env --allow-read --env-file=supabase/functions/
 الإعداد في [`sonar-project.properties`](../sonar-project.properties). على SonarQube محلي:
 
 ```bash
-npx deno test --allow-env --coverage=coverage/raw supabase/functions/_shared
+npx deno test --config tests/deno.json --allow-env --coverage=coverage/raw tests supabase/functions
 npx deno coverage coverage/raw --lcov --output=coverage/lcov.info
 npx @sonar/scan -Dsonar.host.url=http://localhost:9000 -Dsonar.token=<TOKEN>
 ```
 or with powershell
 ```bash
-npx deno test --allow-env --coverage=coverage/raw supabase/functions/_shared
+npx deno test --config tests/deno.json --allow-env --coverage=coverage/raw tests supabase/functions
 npx deno coverage coverage/raw --lcov --output=coverage/lcov.info
 $env:SONAR_TOKEN = "<your token>"
 npx @sonar/scan "-Dsonar.host.url=http://localhost:9000"

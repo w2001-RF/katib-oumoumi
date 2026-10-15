@@ -72,7 +72,7 @@ async function categoriesView(container) {
           <div class="admin-fieldrow" style="grid-template-columns:1fr 1fr auto;">
             <div class="field">
               <label>الاسم</label>
-              <input type="text" class="f-name" value="${c.name_ar.replace(/"/g, '&quot;')}" />
+              <input type="text" class="f-name" value="${c.name_ar.replaceAll('"', '&quot;')}" />
             </div>
             <div class="field">
               <label>الأيقونة</label>

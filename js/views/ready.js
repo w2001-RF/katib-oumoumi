@@ -43,7 +43,7 @@ export async function renderReady(container, params) {
   }
 
   const filledHtml = renderTemplate(docType.template_body, fields, entry.data);
-  const filename = `${docType.name_ar}`.replace(/\s+/g, '_');
+  const filename = `${docType.name_ar}`.replaceAll(/\s+/g, '_');
   const actionsSlot = container.querySelector('#actions-slot');
   const loadDocument = documentLoader(() => filledHtml);
 
