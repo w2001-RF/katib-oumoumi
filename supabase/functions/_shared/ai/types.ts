@@ -48,8 +48,17 @@ export interface TextToSpeech {
 }
 
 export class LLMError extends Error {
-  constructor(message: string, readonly status: number | null, readonly retryable: boolean) {
+  /**
+   * @param retryable another provider may succeed (the FallbackLLM moves on)
+   * @param retryAfterMs the provider's Retry-After, when it sent one
+   */
+  constructor(message: string, readonly status: number | null, readonly retryable: boolean, readonly retryAfterMs?: number) {
     super(message);
     this.name = 'LLMError';
+  }
+
+  /** Overload or network trouble that usually passes: worth retrying the same model. */
+  get transient(): boolean {
+    return this.retryable && this.status !== 404;
   }
 }

@@ -12,7 +12,7 @@ import { formatDateAr } from '../../../../js/utils/format.js';
 import { renderTemplate } from '../../../../js/utils/templateEngine.js';
 import { validateField } from '../../../../js/utils/validators.js';
 import type { Role } from '../ai/registry.ts';
-import type { LLM, SpeechToText, TextToSpeech } from '../ai/types.ts';
+import { type LLM, LLMError, type SpeechToText, type TextToSpeech } from '../ai/types.ts';
 import type { Button, Channel } from '../channels/types.ts';
 import type { DocumentRenderer } from '../docs/render.ts';
 import { isCancel, isYes, MSG } from './messages.ts';
@@ -56,7 +56,9 @@ export async function handleMessage(deps: AgentDeps, msg: IncomingMessage): Prom
     await route(ctx, msg);
   } catch (e) {
     console.error('[agent] failed to handle message', e);
-    await deps.channel.sendText(msg.chatId, MSG.error).catch(() => {});
+    // The AI provider is overloaded even after retries: say so, the user can simply resend.
+    const busy = e instanceof LLMError && e.transient;
+    await deps.channel.sendText(msg.chatId, busy ? MSG.busy : MSG.error).catch(() => {});
   }
 }
 

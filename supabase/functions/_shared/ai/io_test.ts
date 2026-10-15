@@ -16,7 +16,7 @@ Deno.test('URL helpers', () => {
 });
 
 Deno.test('LLM errors: retryable vs not, network failures, empty and part-based replies', async () => {
-  const llm = new OpenAICompatibleLLM({ baseUrl: 'https://x/v1', apiKey: '', model: 'm', caps: capabilitiesFor('m') });
+  const llm = new OpenAICompatibleLLM({ baseUrl: 'https://x/v1', apiKey: '', model: 'm', caps: capabilitiesFor('m'), retries: 0 });
   const req = { messages: [{ role: 'user' as const, content: 'hi' }], maxTokens: 10 };
 
   await withFetch(() => new Response('slow down', { status: 429 }), async (reqs) => {
@@ -46,6 +46,58 @@ Deno.test('LLM errors: retryable vs not, network failures, empty and part-based 
   await withFetch(() => jsonResponse({ choices: [{ message: { content: '{"a":1}' } }] }), async (reqs) => {
     assertEquals(await objectMode.json({ messages: [] }, {}, 's'), { a: 1 });
     assertEquals((reqs[0].json as { response_format: unknown }).response_format, { type: 'json_object' });
+  });
+});
+
+Deno.test('overload (503/429/network) is retried on the same model with backoff', async () => {
+  const waits: number[] = [];
+  const llm = new OpenAICompatibleLLM({
+    baseUrl: 'https://g/v1', apiKey: 'k', model: 'gemini-3.8-flash', caps: capabilitiesFor('gemini-3.8-flash'),
+    sleep: (ms) => {
+      waits.push(ms);
+      return Promise.resolve();
+    },
+  });
+  const answers = [
+    () => new Response('{"error":{"code":503,"message":"high demand"}}', { status: 503 }),
+    () => new Response('slow down', { status: 429, headers: { 'Retry-After': '3' } }),
+    () => jsonResponse({ choices: [{ message: { content: 'جواب' } }] }),
+  ];
+  await withFetch(() => answers.shift()!(), async (reqs) => {
+    assertEquals(await llm.chat({ messages: [] }), 'جواب');
+    assertEquals(reqs.length, 3);
+    assertEquals(waits, [1000, 3000], 'exponential backoff, then the provider\'s Retry-After');
+  });
+});
+
+Deno.test('retries stop after the limit, within the time budget, and never for a retired model', async () => {
+  const sleep = () => Promise.resolve();
+  const busy = () => new Response('busy', { status: 503 });
+  const base = { baseUrl: 'https://g/v1', apiKey: 'k', model: 'm', caps: capabilitiesFor('m'), sleep };
+
+  await withFetch(busy, async (reqs) => {
+    const e = await assertRejects(() => new OpenAICompatibleLLM(base).chat({ messages: [] }), LLMError);
+    assertEquals([e.status, e.transient, reqs.length], [503, true, 3], '1 try + 2 retries');
+  });
+  await withFetch(busy, async (reqs) => {
+    await assertRejects(() => new OpenAICompatibleLLM({ ...base, retryBudgetMs: 500 }).chat({ messages: [] }), LLMError);
+    assertEquals(reqs.length, 1, 'a 1 s wait would exceed the budget');
+  });
+  await withFetch(() => new Response('gone', { status: 404 }), async (reqs) => {
+    const e = await assertRejects(() => new OpenAICompatibleLLM(base).chat({ messages: [] }), LLMError);
+    assertEquals([e.retryable, e.transient, reqs.length], [true, false, 1]);
+  });
+  await withFetch(() => new Response('bad key', { status: 401 }), async (reqs) => {
+    await assertRejects(() => new OpenAICompatibleLLM(base).chat({ messages: [] }), LLMError);
+    assertEquals(reqs.length, 1);
+  });
+});
+
+Deno.test('LLM_RETRIES configures the retries', async () => {
+  const env: Record<string, string> = { LLM_BASE_URL: 'https://g/v1', LLM_MODEL: 'm', LLM_RETRIES: '0' };
+  await withFetch(() => new Response('busy', { status: 503 }), async (reqs) => {
+    await assertRejects(() => getLLM('main', (n) => env[n]).chat({ messages: [] }), LLMError);
+    assertEquals(reqs.length, 1);
   });
 });
 

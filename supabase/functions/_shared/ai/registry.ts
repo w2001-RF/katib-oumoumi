@@ -31,6 +31,7 @@ function endpoint(env: EnvReader, prefix: string) {
     model,
     caps: capabilitiesFor(model, env(`${prefix}CAPS`) ?? (prefix === 'LLM_' ? undefined : env('LLM_CAPS'))),
     timeoutMs: Number(env('LLM_TIMEOUT_MS')) || 45000,
+    retries: env('LLM_RETRIES') === undefined ? undefined : Number(env('LLM_RETRIES')),
   });
 }
 
