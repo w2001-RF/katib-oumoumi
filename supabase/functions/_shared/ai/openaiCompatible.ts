@@ -27,7 +27,7 @@ function authHeaders(apiKey: string): Record<string, string> {
   return apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
 }
 
-// Throws an LLMError; 408/429/5xx and network failures are retryable (the
+// Throws an LLMError; 404/408/429/5xx and network failures are retryable (the
 // FallbackLLM then tries the next provider).
 export async function postJson(url: string, apiKey: string, body: unknown, timeoutMs: number): Promise<any> {
   let res: Response;
@@ -43,8 +43,11 @@ export async function postJson(url: string, apiKey: string, body: unknown, timeo
   }
   if (!res.ok) {
     const detail = (await res.text().catch(() => '')).slice(0, 500);
-    const retryable = res.status === 408 || res.status === 429 || res.status >= 500;
-    throw new LLMError(`HTTP ${res.status} from ${url}: ${detail}`, res.status, retryable);
+    // 404: providers retire and rename models (Google retired gemini-2.5-flash
+    // for new keys), so let the fallback model take over and say what to fix.
+    const hint = res.status === 404 ? ' — model not found: it may be retired or misspelled, check LLM_*MODEL' : '';
+    const retryable = [404, 408, 429].includes(res.status) || res.status >= 500;
+    throw new LLMError(`HTTP ${res.status} from ${url}${hint}: ${detail}`, res.status, retryable);
   }
   return res.json();
 }
