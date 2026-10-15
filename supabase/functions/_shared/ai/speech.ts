@@ -50,6 +50,8 @@ export class LLMAudioSTT implements SpeechToText {
   }
 }
 
+const TTS_MIME: Record<string, string> = { opus: 'audio/ogg', mp3: 'audio/mpeg' };
+
 // OpenAI-style `POST /audio/speech`: OpenAI, Speaches/Kokoro, LocalAI...
 // With format "opus" the result is OGG/Opus, which messaging apps play as a voice note.
 export class OpenAICompatibleTTS implements TextToSpeech {
@@ -65,7 +67,6 @@ export class OpenAICompatibleTTS implements TextToSpeech {
     });
     if (!res.ok) throw new LLMError(`TTS HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`, res.status, res.status >= 500);
     const data = new Uint8Array(await res.arrayBuffer());
-    const voice = this.format === 'opus';
-    return { data, mime: voice ? 'audio/ogg' : `audio/${this.format === 'mp3' ? 'mpeg' : this.format}`, voice };
+    return { data, mime: TTS_MIME[this.format] ?? `audio/${this.format}`, voice: this.format === 'opus' };
   }
 }

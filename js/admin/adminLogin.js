@@ -1,5 +1,5 @@
 import { icon } from '../utils/icons.js';
-import { renderHeader, attachHeaderBack, showToast } from '../ui.js';
+import { renderHeader, attachHeaderBack } from '../ui.js';
 import { navigate } from '../router.js';
 import { adminSignIn, getCurrentSession } from '../api.js';
 
@@ -52,6 +52,7 @@ export async function renderAdminLogin(container) {
       await adminSignIn(email, password);
       navigate('/admin');
     } catch (err) {
+      console.error(err);
       errEl.textContent = 'البريد الإلكتروني أو كلمة المرور غير صحيحة';
       errEl.hidden = false;
       btn.disabled = false;

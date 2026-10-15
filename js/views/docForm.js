@@ -10,7 +10,7 @@ import { enhanceSelects } from '../utils/searchableSelect.js';
 // Value of a field's control; for a dropdown set to «أخرى», the typed text.
 function readFieldValue(wrap) {
   const select = wrap.querySelector('select');
-  if (select && select.value === OTHER_OPTION) return wrap.querySelector('.other-input').value;
+  if (select?.value === OTHER_OPTION) return wrap.querySelector('.other-input').value;
   return wrap.querySelector('input, textarea, select').value;
 }
 
@@ -66,6 +66,7 @@ export async function renderDocForm(container, params) {
   try {
     [docType, fields] = await Promise.all([fetchDocumentType(params.id), fetchTemplateFields(params.id)]);
   } catch (e) {
+    console.error(e);
     container.querySelector('#form-main').innerHTML =
       `<p class="small-note" style="text-align:center;padding:20px 0;">تعذر تحميل هذه الوثيقة.</p>`;
     return;
@@ -135,6 +136,7 @@ export async function renderDocForm(container, params) {
       });
       navigate(`/ready/${historyRecord.id}`);
     } catch (err) {
+      console.error(err);
       showToast('حدث خطأ أثناء توليد الوثيقة');
       submitBtn.disabled = false;
       submitBtn.innerHTML = `${icon('fileText')} توليد الوثيقة`;

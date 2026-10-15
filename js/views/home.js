@@ -48,6 +48,7 @@ export async function renderHome(container) {
         const results = await searchDocumentTypes(q);
         renderList(results, 'لا توجد نتائج مطابقة');
       } catch (e) {
+        console.error(e);
         listEl.innerHTML = `<p class="small-note">تعذر البحث حالياً.</p>`;
       }
     }, 300);
@@ -85,6 +86,7 @@ export async function renderHome(container) {
       const docs = await fetchMostRequested(5);
       renderList(docs, 'لا توجد وثائق بعد');
     } catch (e) {
+      console.error(e);
       listEl.innerHTML = `<p class="small-note" style="text-align:center;padding:20px 0;">تعذر تحميل الوثائق. تحقق من إعداد Supabase.</p>`;
     }
   }

@@ -10,13 +10,13 @@ const CHEVRON =
 export function normalizeForSearch(str) {
   return String(str ?? '')
     .toLowerCase()
-    .replace(/[ً-ٰٟـ]/g, '')
-    .replace(/[أإآٱ]/g, 'ا')
-    .replace(/ة/g, 'ه')
-    .replace(/ى/g, 'ي')
-    .replace(/ؤ/g, 'و')
-    .replace(/ئ/g, 'ي')
-    .replace(/\s+/g, ' ')
+    .replaceAll(/[ً-ٰٟـ]/g, '')
+    .replaceAll(/[أإآٱ]/g, 'ا')
+    .replaceAll('ة', 'ه')
+    .replaceAll('ى', 'ي')
+    .replaceAll('ؤ', 'و')
+    .replaceAll('ئ', 'ي')
+    .replaceAll(/\s+/g, ' ')
     .trim();
 }
 
@@ -29,7 +29,7 @@ export function enhanceSelect(select) {
   select.dataset.enhanced = '1';
 
   const first = select.options[0];
-  const placeholder = first && first.value === '' ? first.text : '— اختر —';
+  const placeholder = first?.value === '' ? first.text : '— اختر —';
   const options = [...select.options]
     .filter((o) => o.value !== '')
     .map((o) => ({ value: o.value, label: o.text, key: normalizeForSearch(o.text) }));

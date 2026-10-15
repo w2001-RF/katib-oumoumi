@@ -42,8 +42,19 @@ export const MSG = {
   requiredCannotSkip: (label: string) => `«${label}» ضروري فهاد الوثيقة، ما يمكنش نخليوه خاوي.`,
 };
 
-const YES_RE = /^\s*(?:نعم|ايه|إيه|اه|آه|أه|واخا|صحيح|موافق|مزيان|يه|ok|okay|oui|yes|d'accord|wakha|iyeh|1)\s*[.!؟?]*\s*$/i;
-const CANCEL_RE = /^\s*(?:\/new|\/cancel|إلغاء|الغي|ألغي|بدا من جديد|annuler|cancel)\s*$/i;
+// Whole-message answers, compared as words (no regex, so no backtracking).
+const YES_WORDS = new Set([
+  'نعم', 'ايه', 'إيه', 'اه', 'آه', 'أه', 'واخا', 'صحيح', 'موافق', 'مزيان', 'يه',
+  'ok', 'okay', 'oui', 'yes', "d'accord", 'wakha', 'iyeh', '1',
+]);
+const CANCEL_WORDS = new Set(['/new', '/cancel', 'إلغاء', 'الغي', 'ألغي', 'بدا من جديد', 'annuler', 'cancel']);
+const TRAILING_PUNCTUATION = new Set(['.', '!', '?', '؟']);
 
-export const isYes = (text: string) => YES_RE.test(text);
-export const isCancel = (text: string) => CANCEL_RE.test(text);
+function asAnswer(text: string): string {
+  let s = text.trim().toLowerCase();
+  while (TRAILING_PUNCTUATION.has(s.at(-1) ?? '')) s = s.slice(0, -1);
+  return s.trim();
+}
+
+export const isYes = (text: string) => YES_WORDS.has(asAnswer(text));
+export const isCancel = (text: string) => CANCEL_WORDS.has(text.trim().toLowerCase());

@@ -57,8 +57,8 @@ for (const c of cases.extraction) {
   const r = await timed(() => extractFields(llm, { text: c.text, documentName: 'شكاية إدارية', fields, askedKeys: c.asked ?? [], today }));
   for (const [key, want] of Object.entries(c.expect)) {
     fieldTotal++;
-    const field = fields.find((f) => f.field_key === key)!;
-    const got = r ? normalizeValue(field, r.values[key]) : '';
+    const field = fields.find((f) => f.field_key === key);
+    const got = r && field ? normalizeValue(field, r.values[key]) : '';
     const expected = want.replace('{today}', today);
     if (got === expected) fieldOk++;
     console.log(`  ${got === expected ? '✓' : '✗'} ${key}: "${got}" (expected "${expected}")`);

@@ -24,10 +24,16 @@ const KNOWN: [prefix: string, caps: ModelCapabilities][] = [
 export const SAFE_DEFAULTS: ModelCapabilities = { tools: false, json: 'none', vision: false, audioInput: false };
 
 export function capabilitiesFor(model: string, override?: string): ModelCapabilities {
-  if (override && override.trim()) return parseCaps(override);
+  if (override?.trim()) return parseCaps(override);
   const name = model.toLowerCase().split('/').pop() || '';
   const hit = KNOWN.find(([prefix]) => name.startsWith(prefix));
   return hit ? { ...hit[1] } : { ...SAFE_DEFAULTS };
+}
+
+function jsonMode(tokens: Set<string>): ModelCapabilities['json'] {
+  if (tokens.has('json_schema')) return 'schema';
+  if (tokens.has('json_object')) return 'object';
+  return 'none';
 }
 
 // "json_schema,vision" -> capabilities. Tokens: tools, json_schema, json_object, vision, audio.
@@ -35,7 +41,7 @@ export function parseCaps(list: string): ModelCapabilities {
   const t = new Set(list.toLowerCase().split(/[\s,]+/).filter(Boolean));
   return {
     tools: t.has('tools'),
-    json: t.has('json_schema') ? 'schema' : t.has('json_object') ? 'object' : 'none',
+    json: jsonMode(t),
     vision: t.has('vision'),
     audioInput: t.has('audio'),
   };

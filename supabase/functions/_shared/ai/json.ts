@@ -1,7 +1,7 @@
 // Pulls a JSON object out of a model reply. Small and free models often wrap
 // it in ```json fences or add a sentence before/after it.
 export function parseJsonReply<T>(text: string): T {
-  const unfenced = text.replace(/```(?:json)?/gi, '').trim();
+  const unfenced = text.replaceAll(/```(?:json)?/gi, '').trim();
   try {
     return JSON.parse(unfenced) as T;
   } catch {

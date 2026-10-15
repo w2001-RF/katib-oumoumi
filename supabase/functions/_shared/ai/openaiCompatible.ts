@@ -10,8 +10,17 @@ export interface EndpointConfig {
   timeoutMs?: number;
 }
 
+// Without regexes: Sonar flags /\/+$/ as a potential backtracking hotspot.
+export function trimTrailingSlashes(s: string): string {
+  let end = s.length;
+  while (end > 0 && s[end - 1] === '/') end--;
+  return s.slice(0, end);
+}
+
 export function joinUrl(base: string, path: string): string {
-  return `${base.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
+  let start = 0;
+  while (start < path.length && path[start] === '/') start++;
+  return `${trimTrailingSlashes(base)}/${path.slice(start)}`;
 }
 
 function authHeaders(apiKey: string): Record<string, string> {
@@ -68,16 +77,17 @@ export class OpenAICompatibleLLM implements LLM {
     throw new LLMError(`Empty reply from ${this.cfg.model}`, null, true);
   }
 
+  private responseFormat(schema: JsonSchema, schemaName: string): unknown {
+    if (this.caps.json === 'schema') return { type: 'json_schema', json_schema: { name: schemaName, schema, strict: false } };
+    if (this.caps.json === 'object') return { type: 'json_object' };
+    return undefined;
+  }
+
   // Structured output on any model: the provider's JSON-schema or JSON mode
   // when the model supports it, the schema spelled out in the prompt in every
   // case, and one corrective retry if the reply still does not parse.
   async json<T>(req: ChatRequest, schema: JsonSchema, schemaName: string): Promise<T> {
-    const format =
-      this.caps.json === 'schema'
-        ? { type: 'json_schema', json_schema: { name: schemaName, schema, strict: false } }
-        : this.caps.json === 'object'
-          ? { type: 'json_object' }
-          : undefined;
+    const format = this.responseFormat(schema, schemaName);
     const instruction = {
       role: 'system' as const,
       content: `Answer with ONE JSON object only, no prose, no code fences. It must match this JSON schema:\n${JSON.stringify(schema)}`,

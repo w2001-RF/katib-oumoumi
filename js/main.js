@@ -28,7 +28,14 @@ registerRoute('/admin/doctype/:id/edit', (container, params) => renderAdminDocTy
 
 const app = document.getElementById('app');
 
-if (!supabaseReady) {
+if (supabaseReady) {
+  initRouter(app);
+  try {
+    await renderCurrentRoute();
+  } catch (e) {
+    console.error(e);
+  }
+} else {
   app.innerHTML = `
     <div style="padding:40px 24px;text-align:center;font-family:sans-serif;direction:rtl;">
       <h2 style="color:#16294a;">إعداد Supabase غير مكتمل</h2>
@@ -39,7 +46,4 @@ if (!supabaseReady) {
         (SUPABASE_URL و SUPABASE_ANON_KEY). راجع README.md لمزيد من التفاصيل.
       </p>
     </div>`;
-} else {
-  initRouter(app);
-  renderCurrentRoute();
 }

@@ -35,6 +35,7 @@ export async function renderCategories(container) {
       tile.addEventListener('click', () => navigate(`/categories/${tile.dataset.catId}`));
     });
   } catch (e) {
+    console.error(e);
     container.querySelector('#categories-grid').innerHTML =
       `<p class="small-note" style="text-align:center;padding:20px 0;">تعذر تحميل التصنيفات.</p>`;
   }

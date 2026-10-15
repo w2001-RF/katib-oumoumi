@@ -21,7 +21,18 @@ export function fieldTypeLabel(value) {
 const PHONE_RE = /^(?:\+212|00212|0)[5-7]\d{8}$/;
 // Moroccan national ID (CIN): 1-2 letters followed by 1-8 digits, e.g. G754103.
 const CIN_RE = /^[A-Za-z]{1,2}\d{1,8}$/;
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const INT_RE = /^-?\d+$/;
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const WHITESPACE_RE = /\s/;
+
+// name@domain.tld: one "@", no spaces, a dot inside the domain (not first or
+// last). Same rule as /^[^\s@]+@[^\s@]+\.[^\s@]+$/, checked without a
+// backtracking regex.
+function isEmail(value) {
+  if (WHITESPACE_RE.test(value)) return false;
+  const parts = value.split('@');
+  return parts.length === 2 && parts[0].length > 0 && parts[1].slice(1, -1).includes('.');
+}
 
 export function validateField(field, rawValue) {
   const value = (rawValue ?? '').toString().trim();
@@ -31,31 +42,24 @@ export function validateField(field, rawValue) {
   }
   if (!value) return null; // optional & empty — OK
 
-  switch (field.field_type) {
-    case 'int':
-      if (!/^-?\d+$/.test(value)) return 'يرجى إدخال رقم صحيح';
-      return null;
-    case 'date':
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return 'يرجى اختيار تاريخ صحيح';
-      return null;
-    case 'phone':
-      if (!PHONE_RE.test(value.replace(/[\s-]/g, ''))) return 'رقم الهاتف غير صحيح (مثال: 06XXXXXXXX)';
-      return null;
-    case 'email':
-      if (!EMAIL_RE.test(value)) return 'البريد الإلكتروني غير صحيح';
-      return null;
-    case 'cin':
-      if (!CIN_RE.test(value)) return 'رقم البطاقة الوطنية غير صحيح (مثال: G754103)';
-      return null;
-    case 'select':
-      // «أخرى» in the options means any typed value is accepted.
-      if (hasOtherOption(field)) return null;
-      if (fieldOptions(field).length && !fieldOptions(field).includes(value)) return 'يرجى اختيار قيمة من القائمة';
-      return null;
-    default:
-      return null;
-  }
+  const check = TYPE_CHECKS[field.field_type];
+  return check ? check(value, field) : null;
 }
+
+// Per field type: the error message for a non-empty value, or null when valid.
+const TYPE_CHECKS = {
+  int: (value) => (INT_RE.test(value) ? null : 'يرجى إدخال رقم صحيح'),
+  date: (value) => (ISO_DATE_RE.test(value) ? null : 'يرجى اختيار تاريخ صحيح'),
+  phone: (value) => (PHONE_RE.test(value.replaceAll(/[\s-]/g, '')) ? null : 'رقم الهاتف غير صحيح (مثال: 06XXXXXXXX)'),
+  email: (value) => (isEmail(value) ? null : 'البريد الإلكتروني غير صحيح'),
+  cin: (value) => (CIN_RE.test(value) ? null : 'رقم البطاقة الوطنية غير صحيح (مثال: G754103)'),
+  select: (value, field) => {
+    // «أخرى» in the options means any typed value is accepted.
+    if (hasOtherOption(field)) return null;
+    const options = fieldOptions(field);
+    return options.length && !options.includes(value) ? 'يرجى اختيار قيمة من القائمة' : null;
+  },
+};
 
 // Choices of a 'select' field (jsonb array in the database).
 export function fieldOptions(field) {

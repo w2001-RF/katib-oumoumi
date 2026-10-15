@@ -5,6 +5,8 @@
 // Chromium shapes Arabic and lays out RTL exactly like the web preview.
 // Without PDF_SERVICE_URL the bot sends a printable .html file instead.
 
+import { joinUrl } from '../ai/openaiCompatible.ts';
+
 export interface RenderedFile {
   data: Uint8Array;
   filename: string;
@@ -51,7 +53,7 @@ export class GotenbergRenderer implements DocumentRenderer {
     form.append('printBackground', 'true');
     const headers: Record<string, string> = {};
     if (this.basicAuth) headers.Authorization = `Basic ${btoa(this.basicAuth)}`;
-    const res = await fetch(`${this.baseUrl.replace(/\/+$/, '')}/forms/chromium/convert/html`, {
+    const res = await fetch(joinUrl(this.baseUrl, 'forms/chromium/convert/html'), {
       method: 'POST', headers, body: form, signal: AbortSignal.timeout(60000),
     });
     if (!res.ok) throw new Error(`PDF service HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);

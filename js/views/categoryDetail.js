@@ -41,6 +41,7 @@ export async function renderCategoryDetail(container, params) {
       card.addEventListener('click', () => navigate(`/doc/${card.dataset.docId}`));
     });
   } catch (e) {
+    console.error(e);
     container.querySelector('#doctype-list').innerHTML =
       `<p class="small-note" style="text-align:center;padding:20px 0;">تعذر تحميل هذا التصنيف.</p>`;
   }

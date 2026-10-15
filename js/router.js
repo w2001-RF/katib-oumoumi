@@ -13,7 +13,7 @@ export function registerRoute(pattern, handler) {
         paramNames.push(seg.slice(1));
         return '([^/]+)';
       }
-      return seg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return seg.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
     })
     .join('/');
   routes.push({ regex: new RegExp(`^${regexStr}$`), paramNames, handler });
@@ -34,19 +34,20 @@ function matchRoute(path) {
 export function initRouter(el, notifyFn) {
   mountEl = el;
   onNavigate = notifyFn;
-  window.addEventListener('hashchange', renderCurrentRoute);
+  globalThis.addEventListener('hashchange', renderCurrentRoute);
 }
 
 export function navigate(path) {
-  if (window.location.hash === `#${path}`) {
-    renderCurrentRoute();
+  if (globalThis.location.hash === `#${path}`) {
+    renderCurrentRoute().catch((e) => console.error(e));
   } else {
-    window.location.hash = path;
+    globalThis.location.hash = path;
   }
 }
 
 export function currentPath() {
-  return window.location.hash.replace(/^#/, '') || '/';
+  const { hash } = globalThis.location;
+  return (hash.startsWith('#') ? hash.slice(1) : hash) || '/';
 }
 
 export async function renderCurrentRoute() {
