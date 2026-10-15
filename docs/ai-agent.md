@@ -92,6 +92,14 @@ npx deno test --allow-env --coverage=coverage/raw supabase/functions/_shared
 npx deno coverage coverage/raw --lcov --output=coverage/lcov.info
 npx @sonar/scan -Dsonar.host.url=http://localhost:9000 -Dsonar.token=<TOKEN>
 ```
+or with powershell
+```bash
+npx deno test --allow-env --coverage=coverage/raw supabase/functions/_shared
+npx deno coverage coverage/raw --lcov --output=coverage/lcov.info
+$env:SONAR_TOKEN = "<your token>"
+npx @sonar/scan "-Dsonar.host.url=http://localhost:9000"
+
+```
 
 ## الخطوات القادمة
 
