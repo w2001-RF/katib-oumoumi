@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Katib Oumoumi — System Architecture",
+    "locale": "en",
+    "output": "docs/diagrams/system-architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/w2001-RF/katib-oumoumi.git",
+      "provider": "github",
+      "revision": "f0919492537ebc97bea4c498dfbdad6359276daf"
+    }
+  },
+  "components": [
+    { "id": "citizenWeb", "type": "external", "label": "Citizen", "sublabel": "web browser", "pos": [40, 40], "size": [130, 60] },
+    { "id": "webapp", "type": "frontend", "label": "Web app (SPA)", "sublabel": "GitHub Pages · vanilla JS", "pos": [250, 40], "size": [160, 60],
+      "sources": [
+        { "path": "js/main.js", "line": 1, "end_line": 49, "label": "routes + start" },
+        { "path": ".github/workflows/deploy-pages.yml", "line": 29, "end_line": 61, "label": "Pages deploy" },
+        { "path": "js/views/docForm.js", "line": 56, "end_line": 145, "label": "form + validation" }
+      ] },
+    { "id": "exporter", "type": "frontend", "label": "Word / PDF export", "sublabel": "in the browser", "pos": [250, 190], "size": [160, 60],
+      "sources": [
+        { "path": "js/views/ready.js", "line": 11, "end_line": 126, "label": "fill template" },
+        { "path": "js/utils/docGenerator.js", "line": 192, "end_line": 231, "label": "PDF export" }
+      ] },
+    { "id": "auth", "type": "security", "label": "Supabase Auth", "sublabel": "single admin account", "pos": [520, 190], "size": [150, 60],
+      "sources": [
+        { "path": "js/api.js", "line": 116, "end_line": 121, "label": "admin sign-in" },
+        { "path": "supabase/schema.sql", "line": 158, "end_line": 180, "label": "admin RLS policies" }
+      ] },
+    { "id": "postgres", "type": "database", "label": "Postgres + RLS", "sublabel": "templates · fields · usage", "pos": [790, 40], "size": [170, 60],
+      "sources": [
+        { "path": "supabase/schema.sql", "line": 11, "end_line": 112, "label": "tables + view" },
+        { "path": "supabase/schema.sql", "line": 129, "end_line": 156, "label": "RLS + public read" },
+        { "path": "js/api.js", "line": 86, "end_line": 112, "label": "fields + usage log" }
+      ] },
+    { "id": "citizenTg", "type": "external", "label": "Citizen", "sublabel": "Telegram · text/voice/photo", "pos": [40, 360], "size": [130, 60] },
+    { "id": "telegram", "type": "cloud", "label": "Telegram Bot API", "sublabel": "webhook + replies", "pos": [250, 360], "size": [160, 60],
+      "sources": [
+        { "path": "supabase/functions/_shared/channels/telegram.ts", "line": 12, "end_line": 132, "label": "Telegram adapter" }
+      ] },
+    { "id": "webhookFn", "type": "backend", "label": "telegram-webhook", "sublabel": "Supabase Edge Function", "pos": [520, 360], "size": [160, 60],
+      "sources": [
+        { "path": "supabase/functions/telegram-webhook/handler.ts", "line": 37, "end_line": 54, "label": "secret + async work" },
+        { "path": "supabase/functions/telegram-webhook/index.ts", "line": 17, "end_line": 31, "label": "wiring" },
+        { "path": "supabase/config.toml", "line": 1, "end_line": 2, "label": "no JWT check" }
+      ] },
+    { "id": "engine", "type": "backend", "label": "Agent engine", "sublabel": "state machine + validators", "pos": [790, 360], "size": [170, 60],
+      "sources": [
+        { "path": "supabase/functions/_shared/agent/engine.ts", "line": 51, "end_line": 118, "label": "entry + routing" },
+        { "path": "supabase/functions/_shared/agent/engine.ts", "line": 206, "end_line": 261, "label": "collect + validate" },
+        { "path": "supabase/functions/_shared/agent/store.ts", "line": 142, "end_line": 178, "label": "reads templates, logs" }
+      ] },
+    { "id": "agentDb", "type": "database", "label": "Agent tables", "sublabel": "service role only", "pos": [790, 520], "size": [170, 60],
+      "sources": [
+        { "path": "supabase/migrations/002_ai_agent.sql", "line": 30, "end_line": 90, "label": "agent_* + RLS" },
+        { "path": "supabase/functions/_shared/agent/store.ts", "line": 64, "end_line": 140, "label": "users, state, profiles" }
+      ] },
+    { "id": "llm", "type": "cloud", "label": "AI providers", "sublabel": "Gemini · Groq · Ollama…", "pos": [1060, 360], "size": [160, 60], "tag": "retry + fallback",
+      "sources": [
+        { "path": "supabase/functions/_shared/ai/registry.ts", "line": 40, "end_line": 60, "label": "LLM / STT / TTS config" },
+        { "path": "supabase/functions/_shared/ai/openaiCompatible.ts", "line": 87, "end_line": 118, "label": "one HTTP format" },
+        { "path": "supabase/functions/_shared/ai/fallback.ts", "line": 24, "end_line": 36, "label": "fallback chain" }
+      ] },
+    { "id": "pdfSvc", "type": "cloud", "label": "Gotenberg", "sublabel": "HTML → PDF (optional)", "pos": [1060, 520], "size": [160, 60],
+      "sources": [
+        { "path": "supabase/functions/_shared/docs/render.ts", "line": 46, "end_line": 77, "label": "PDF or .html" }
+      ] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "User's browser", "wraps": ["webapp", "exporter"] },
+    { "kind": "region", "label": "Supabase project", "wraps": ["auth", "postgres", "webhookFn", "engine", "agentDb"] }
+  ],
+  "connections": [
+    { "id": "open-app", "from": "citizenWeb", "to": "webapp", "label": "HTTPS", "variant": "emphasis" },
+    { "id": "rest-read", "from": "webapp", "to": "postgres", "label": "REST · anon key", "variant": "emphasis" },
+    { "id": "admin-login", "from": "webapp", "to": "auth", "label": "admin login", "variant": "security" },
+    { "id": "fill-export", "from": "webapp", "to": "exporter", "label": "fill + export" },
+    { "id": "send-message", "from": "citizenTg", "to": "telegram", "label": "chat", "variant": "emphasis" },
+    { "id": "webhook-post", "from": "telegram", "to": "webhookFn", "label": "POST + secret", "variant": "security" },
+    { "id": "run-engine", "from": "webhookFn", "to": "engine", "label": "update", "variant": "emphasis" },
+    { "id": "read-templates", "from": "engine", "to": "postgres", "label": "templates · usage" },
+    { "id": "save-state", "from": "engine", "to": "agentDb", "label": "state · profiles" },
+    { "id": "call-model", "from": "engine", "to": "llm", "label": "JSON tasks" },
+    { "id": "render-pdf", "from": "engine", "to": "pdfSvc", "label": "HTML", "variant": "dashed" },
+    { "id": "reply", "from": "webhookFn", "to": "telegram", "label": "replies + file", "fromSide": "bottom", "toSide": "bottom" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Two ways in", "items": [
+      "Web: static SPA reads Supabase directly; export happens in the browser",
+      "Telegram: the Edge Function runs the agent on the same templates"
+    ] },
+    { "dot": "emerald", "title": "Shared source of truth", "items": [
+      "Admin-written templates and fields drive both paths",
+      "The agent reuses the web app's validators and template engine"
+    ] },
+    { "dot": "rose", "title": "Security", "items": [
+      "Public read and usage insert via RLS; writes need the admin account",
+      "Agent tables have RLS and no policies: service role only"
+    ] }
+  ]
+}

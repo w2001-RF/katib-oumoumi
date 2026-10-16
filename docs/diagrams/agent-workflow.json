@@ -1,0 +1,491 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Katib Agent — Telegram Conversation Workflow",
+    "locale": "en",
+    "output": "docs/diagrams/agent-workflow.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/w2001-RF/katib-oumoumi.git",
+      "provider": "github",
+      "revision": "f0919492537ebc97bea4c498dfbdad6359276daf"
+    }
+  },
+  "lanes": [
+    {
+      "id": "citizen",
+      "label": "Citizen (Telegram)"
+    },
+    {
+      "id": "engine",
+      "label": "Agent engine · Edge Function"
+    },
+    {
+      "id": "ai",
+      "label": "AI model · any OpenAI-compatible API"
+    },
+    {
+      "id": "data",
+      "label": "Supabase & document output"
+    }
+  ],
+  "phases": [
+    {
+      "id": "intake",
+      "label": "Receive + consent",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "understand",
+      "label": "Choose + collect",
+      "fromCol": 2,
+      "toCol": 3,
+      "variant": "emphasis"
+    },
+    {
+      "id": "deliver",
+      "label": "Confirm + deliver",
+      "fromCol": 4,
+      "toCol": 5
+    }
+  ],
+  "mainPath": [
+    "message",
+    "webhook",
+    "consent",
+    "choose",
+    "collect",
+    "confirm",
+    "approve",
+    "generate",
+    "receive"
+  ],
+  "nodes": [
+    {
+      "id": "message",
+      "lane": "citizen",
+      "col": 0,
+      "type": "external",
+      "label": "Message",
+      "sublabel": "text · voice · photo"
+    },
+    {
+      "id": "answer",
+      "lane": "citizen",
+      "col": 3,
+      "type": "external",
+      "label": "Answer questions",
+      "sublabel": "one at a time by voice"
+    },
+    {
+      "id": "approve",
+      "lane": "citizen",
+      "col": 4,
+      "type": "external",
+      "label": "Confirm or correct",
+      "sublabel": "buttons or reply"
+    },
+    {
+      "id": "receive",
+      "lane": "citizen",
+      "col": 5,
+      "type": "external",
+      "label": "Document received",
+      "sublabel": "file + next steps"
+    },
+    {
+      "id": "webhook",
+      "lane": "engine",
+      "col": 0,
+      "type": "security",
+      "label": "Webhook",
+      "sublabel": "secret check · 200 at once",
+      "sources": [
+        {
+          "path": "supabase/functions/telegram-webhook/handler.ts",
+          "line": 37,
+          "end_line": 54,
+          "label": "secret + background work"
+        },
+        {
+          "path": "supabase/functions/_shared/agent/store.ts",
+          "line": 64,
+          "end_line": 74,
+          "label": "drop retried updates"
+        }
+      ]
+    },
+    {
+      "id": "consent",
+      "lane": "engine",
+      "col": 1,
+      "type": "security",
+      "label": "Consent gate",
+      "sublabel": "no AI call before yes",
+      "sources": [
+        {
+          "path": "supabase/functions/_shared/agent/engine.ts",
+          "line": 65,
+          "end_line": 100,
+          "label": "commands + consent"
+        }
+      ]
+    },
+    {
+      "id": "choose",
+      "lane": "engine",
+      "col": 2,
+      "type": "backend",
+      "label": "Choose document",
+      "sublabel": "menu if unsure",
+      "sources": [
+        {
+          "path": "supabase/functions/_shared/agent/engine.ts",
+          "line": 157,
+          "end_line": 191,
+          "label": "choosing state"
+        }
+      ]
+    },
+    {
+      "id": "collect",
+      "lane": "engine",
+      "col": 3,
+      "type": "backend",
+      "label": "Collect + validate",
+      "sublabel": "web-app validators",
+      "tag": "server decides",
+      "sources": [
+        {
+          "path": "supabase/functions/_shared/agent/engine.ts",
+          "line": 206,
+          "end_line": 261,
+          "label": "extract, validate, store"
+        },
+        {
+          "path": "supabase/functions/_shared/agent/engine.ts",
+          "line": 263,
+          "end_line": 294,
+          "label": "missing fields + next question"
+        }
+      ]
+    },
+    {
+      "id": "confirm",
+      "lane": "engine",
+      "col": 4,
+      "type": "backend",
+      "label": "Read-back summary",
+      "sublabel": "CIN spelled out",
+      "sources": [
+        {
+          "path": "supabase/functions/_shared/agent/engine.ts",
+          "line": 327,
+          "end_line": 360,
+          "label": "summary + corrections"
+        }
+      ]
+    },
+    {
+      "id": "generate",
+      "lane": "engine",
+      "col": 5,
+      "type": "backend",
+      "label": "Generate document",
+      "sublabel": "fill template",
+      "sources": [
+        {
+          "path": "supabase/functions/_shared/agent/engine.ts",
+          "line": 364,
+          "end_line": 392,
+          "label": "render, send, log"
+        }
+      ]
+    },
+    {
+      "id": "stt",
+      "lane": "ai",
+      "col": 1,
+      "type": "cloud",
+      "label": "Speech-to-text",
+      "sublabel": "voice note → text",
+      "sources": [
+        {
+          "path": "supabase/functions/_shared/agent/engine.ts",
+          "line": 122,
+          "end_line": 144,
+          "label": "transcribe voice"
+        },
+        {
+          "path": "supabase/functions/_shared/ai/registry.ts",
+          "line": 47,
+          "end_line": 53,
+          "label": "STT_* or audio model"
+        }
+      ]
+    },
+    {
+      "id": "intent",
+      "lane": "ai",
+      "col": 2,
+      "type": "cloud",
+      "label": "Detect intent",
+      "sublabel": "request → document",
+      "sources": [
+        {
+          "path": "supabase/functions/_shared/agent/tasks.ts",
+          "line": 30,
+          "end_line": 66,
+          "label": "detectIntent"
+        }
+      ]
+    },
+    {
+      "id": "extract",
+      "lane": "ai",
+      "col": 3,
+      "type": "cloud",
+      "label": "Extract + rewrite",
+      "sublabel": "values · formal Arabic",
+      "sources": [
+        {
+          "path": "supabase/functions/_shared/agent/tasks.ts",
+          "line": 91,
+          "end_line": 145,
+          "label": "extractFields"
+        },
+        {
+          "path": "supabase/functions/_shared/agent/tasks.ts",
+          "line": 192,
+          "end_line": 216,
+          "label": "rewriteFormal"
+        }
+      ]
+    },
+    {
+      "id": "templates",
+      "lane": "data",
+      "col": 2,
+      "type": "database",
+      "label": "Templates",
+      "sublabel": "fields + agent hints",
+      "sources": [
+        {
+          "path": "supabase/functions/_shared/agent/store.ts",
+          "line": 142,
+          "end_line": 171,
+          "label": "catalog + document"
+        },
+        {
+          "path": "supabase/schema.sql",
+          "line": 82,
+          "end_line": 102,
+          "label": "v_template_fields"
+        }
+      ]
+    },
+    {
+      "id": "convs",
+      "lane": "data",
+      "col": 3,
+      "type": "database",
+      "label": "Conversations",
+      "sublabel": "saved every step",
+      "sources": [
+        {
+          "path": "supabase/functions/_shared/agent/store.ts",
+          "line": 84,
+          "end_line": 117,
+          "label": "load + save state"
+        },
+        {
+          "path": "supabase/migrations/002_ai_agent.sql",
+          "line": 69,
+          "end_line": 84,
+          "label": "agent_conversations"
+        }
+      ]
+    },
+    {
+      "id": "log",
+      "lane": "data",
+      "col": 4,
+      "type": "database",
+      "label": "Usage + profile",
+      "sublabel": "generated_documents",
+      "sources": [
+        {
+          "path": "supabase/functions/_shared/agent/store.ts",
+          "line": 173,
+          "end_line": 178,
+          "label": "same log as web app"
+        },
+        {
+          "path": "supabase/functions/_shared/agent/engine.ts",
+          "line": 384,
+          "end_line": 392,
+          "label": "save user profile"
+        }
+      ]
+    },
+    {
+      "id": "pdf",
+      "lane": "data",
+      "col": 5,
+      "type": "cloud",
+      "label": "PDF service",
+      "sublabel": "Gotenberg or .html",
+      "sources": [
+        {
+          "path": "supabase/functions/_shared/docs/render.ts",
+          "line": 46,
+          "end_line": 77,
+          "label": "renderers"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "send-update",
+      "from": "message",
+      "to": "webhook",
+      "label": "update"
+    },
+    {
+      "id": "to-consent",
+      "from": "webhook",
+      "to": "consent"
+    },
+    {
+      "id": "agreed",
+      "from": "consent",
+      "to": "choose",
+      "label": "agreed",
+      "variant": "emphasis"
+    },
+    {
+      "id": "voice-note",
+      "from": "consent",
+      "to": "stt",
+      "label": "transcribe voice",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "ask-intent",
+      "from": "choose",
+      "to": "intent",
+      "label": "free text",
+      "role": "branch"
+    },
+    {
+      "id": "read-catalog",
+      "from": "choose",
+      "to": "templates",
+      "label": "catalog",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "doc-chosen",
+      "from": "choose",
+      "to": "collect",
+      "label": "document",
+      "variant": "emphasis"
+    },
+    {
+      "id": "ask-extract",
+      "from": "collect",
+      "to": "extract",
+      "label": "extract",
+      "role": "branch"
+    },
+    {
+      "id": "save-state",
+      "from": "collect",
+      "to": "convs",
+      "label": "save",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "ask-missing",
+      "from": "collect",
+      "to": "answer",
+      "label": "missing field?",
+      "variant": "security",
+      "role": "branch"
+    },
+    {
+      "id": "all-valid",
+      "from": "collect",
+      "to": "confirm",
+      "label": "all valid",
+      "variant": "emphasis"
+    },
+    {
+      "id": "read-back",
+      "from": "confirm",
+      "to": "approve",
+      "label": "read back"
+    },
+    {
+      "id": "yes",
+      "from": "approve",
+      "to": "generate",
+      "label": "yes",
+      "variant": "emphasis"
+    },
+    {
+      "id": "render-html",
+      "from": "generate",
+      "to": "pdf",
+      "label": "HTML",
+      "role": "branch"
+    },
+    {
+      "id": "log-usage",
+      "from": "generate",
+      "to": "log",
+      "label": "log",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "deliver-file",
+      "from": "generate",
+      "to": "receive",
+      "label": "file",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Loop until complete",
+      "items": [
+        "Each answer goes back through Collect + validate",
+        "A correction at the summary re-enters the same check"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Failures",
+      "items": [
+        "Busy model: 2 retries with backoff, then a resend message",
+        "Retired model (404): fallback model takes over"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Privacy",
+      "items": [
+        "Nothing reaches an AI provider before consent",
+        "/forget deletes profile and conversations"
+      ]
+    }
+  ]
+}
