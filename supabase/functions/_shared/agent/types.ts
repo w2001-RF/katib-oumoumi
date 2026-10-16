@@ -62,10 +62,13 @@ export interface IncomingMessage {
   /** Monotonic per user (Telegram update_id); used to drop webhook retries. */
   updateId: number;
   text?: string;
-  audio?: { data: Uint8Array; mime: string };
+  /** `seconds`: length of the voice note, when the channel says. */
+  audio?: { data: Uint8Array; mime: string; seconds?: number };
   image?: { data: Uint8Array; mime: string };
   /** A button press: "consent:yes", "doc:<uuid>", "confirm:yes", "confirm:edit". */
   action?: string;
   /** Something we received but cannot read (e.g. a PDF file). */
   unsupported?: string;
+  /** Date.now() when the update arrived (before media downloads), for response-time metrics. */
+  receivedAt?: number;
 }

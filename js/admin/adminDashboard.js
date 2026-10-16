@@ -19,6 +19,7 @@ async function dashboardView(container) {
         <button class="btn-primary" id="new-doc-btn" style="flex:1;">${icon('plus')} وثيقة جديدة</button>
         <button class="btn-outline" id="manage-cats-btn" style="flex:1;margin-top:0;">${icon('grid3')} التصنيفات</button>
       </div>
+      <button class="btn-outline" id="agents-btn" style="width:100%;margin:0 0 18px;">${icon('activity')} مراقبة الوكلاء الأذكياء (تيليغرام، واتساب…)</button>
 
       <div class="section-title">أنواع الوثائق</div>
       <div id="doctypes-list">${loadingSpinner(true)}</div>
@@ -32,6 +33,7 @@ async function dashboardView(container) {
   });
   container.querySelector('#new-doc-btn').addEventListener('click', () => navigate('/admin/doctype/new'));
   container.querySelector('#manage-cats-btn').addEventListener('click', () => navigate('/admin/categories'));
+  container.querySelector('#agents-btn').addEventListener('click', () => navigate('/admin/agents'));
 
   loadStats();
   loadDocTypes();

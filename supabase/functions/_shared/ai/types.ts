@@ -26,6 +26,8 @@ export interface ChatRequest {
   messages: ChatMessage[];
   temperature?: number;
   maxTokens?: number;
+  /** What the call is for (intent, extraction...); only used for telemetry, never sent. */
+  task?: string;
 }
 
 export type JsonSchema = Record<string, unknown>;
@@ -39,7 +41,8 @@ export interface LLM {
 }
 
 export interface SpeechToText {
-  transcribe(audio: Uint8Array, mime: string): Promise<string>;
+  /** `seconds`: length of the recording when the channel knows it (for usage and cost). */
+  transcribe(audio: Uint8Array, mime: string, seconds?: number): Promise<string>;
 }
 
 export interface TextToSpeech {

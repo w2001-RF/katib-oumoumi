@@ -3,6 +3,7 @@ import { assertEquals } from 'jsr:@std/assert@1';
 import { HtmlFileRenderer } from '../_shared/docs/render.ts';
 import type { TelegramChannel } from '../_shared/channels/telegram.ts';
 import { MemoryStore, RecordingChannel, ScriptedLLM } from '../_shared/testing/agentFakes.ts';
+import type { TurnMetrics, TurnRecord } from '../_shared/metrics/types.ts';
 import { createWebhookHandler, timingSafeEqual } from './handler.ts';
 
 const post = (body: string, secret = 's3cret') =>
@@ -61,4 +62,30 @@ Deno.test('webhook: without waitUntil it waits; failures are logged, not thrown'
     makeDeps: () => { throw new Error('unused'); },
   });
   assertEquals((await handler(post(JSON.stringify({ update_id: 3 })))).status, 200);
+});
+
+Deno.test('webhook: telemetry per update, including updates that could not be read', async () => {
+  const turns: TurnRecord[] = [];
+  const observers: unknown[] = [];
+  const metrics = (): TurnMetrics => ({ observe: () => {}, finishTurn: (t) => {
+    turns.push(t);
+    return Promise.resolve();
+  } });
+  const channel = new RecordingChannel();
+  let parse: () => Promise<unknown> = () => Promise.reject(new Error('download failed for bot1:SECRET'));
+  const handler = createWebhookHandler({
+    token: 'T', secret: 's3cret', makeMetrics: metrics,
+    makeChannel: (_token, observe) => {
+      observers.push(observe);
+      return Object.assign(channel, { parseUpdate: () => parse() }) as unknown as TelegramChannel;
+    },
+    makeDeps: (ch) => ({ store: new MemoryStore(), channel: ch, llm: () => new ScriptedLLM({}), stt: null, tts: null, renderer: new HtmlFileRenderer() }),
+  });
+  await handler(post(JSON.stringify({ update_id: 4 })));
+  assertEquals([turns[0].outcome, turns[0].inputKind, turns[0].error], ['error', 'other', 'download failed for bot<token>']);
+  assertEquals(typeof observers[0], 'function', 'the channel reports its own calls');
+
+  parse = () => Promise.resolve({ channel: 'telegram', externalUserId: '9', chatId: '9', displayName: '', updateId: 5, text: '/help' });
+  await handler(post(JSON.stringify({ update_id: 5 })));
+  assertEquals([turns[1].outcome, turns[1].inputKind], ['ok', 'command']);
 });

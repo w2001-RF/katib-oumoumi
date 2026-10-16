@@ -124,6 +124,10 @@ export class SupabaseAgentStore implements AgentStore {
     check(await this.db.from('agent_user_profiles').delete().eq('user_id', userId));
     check(await this.db.from('agent_conversations').delete().eq('user_id', userId));
     check(await this.db.from('agent_channel_users').update({ consent_at: null, prefers_voice: false }).eq('id', userId));
+    // Dashboard telemetry keeps no content, but unlink it from the user too.
+    // Best effort: the table exists only once migration 003 is applied.
+    const { error } = await this.db.from('agent_turns').update({ user_id: null }).eq('user_id', userId);
+    if (error) console.warn('[agent] could not unlink telemetry', error.message);
   }
 
   async getProfile(userId: string): Promise<Record<string, string>> {

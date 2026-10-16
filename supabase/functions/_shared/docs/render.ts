@@ -6,6 +6,8 @@
 // Without PDF_SERVICE_URL the bot sends a printable .html file instead.
 
 import { joinUrl } from '../ai/openaiCompatible.ts';
+import { errorKindFor, hostOf, redact } from '../metrics/classify.ts';
+import { type CallObserver, emit } from '../metrics/types.ts';
 
 export interface RenderedFile {
   data: Uint8Array;
@@ -43,10 +45,33 @@ export function safeFilename(title: string): string {
   return title.replaceAll(/[\\/:*?"<>|]/g, '').trim() || 'document';
 }
 
+export class PdfServiceError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = 'PdfServiceError';
+  }
+}
+
 export class GotenbergRenderer implements DocumentRenderer {
-  constructor(private readonly baseUrl: string, private readonly basicAuth?: string) {}
+  constructor(private readonly baseUrl: string, private readonly basicAuth?: string, private readonly observe?: CallObserver) {}
 
   async render(bodyHtml: string, title: string): Promise<RenderedFile> {
+    const started = Date.now();
+    const event = { service: 'pdf' as const, provider: 'gotenberg', model: hostOf(this.baseUrl), operation: 'render', task: 'render' };
+    try {
+      const file = await this.convert(bodyHtml, title);
+      emit(this.observe, { ...event, ok: true, httpStatus: 200, latencyMs: Date.now() - started });
+      return file;
+    } catch (e) {
+      const status = e instanceof PdfServiceError ? e.status : null;
+      const message = (e as Error).message;
+      emit(this.observe, { ...event, ok: false, httpStatus: status, errorKind: errorKindFor(status, message), error: redact(message),
+        latencyMs: Date.now() - started });
+      throw e;
+    }
+  }
+
+  private async convert(bodyHtml: string, title: string): Promise<RenderedFile> {
     const form = new FormData();
     form.append('files', new Blob([wrapDocumentHtml(bodyHtml, title)], { type: 'text/html' }), 'index.html');
     form.append('waitDelay', '1s'); // let the Tajawal web font load
@@ -56,7 +81,7 @@ export class GotenbergRenderer implements DocumentRenderer {
     const res = await fetch(joinUrl(this.baseUrl, 'forms/chromium/convert/html'), {
       method: 'POST', headers, body: form, signal: AbortSignal.timeout(60000),
     });
-    if (!res.ok) throw new Error(`PDF service HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    if (!res.ok) throw new PdfServiceError(`PDF service HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`, res.status);
     return { data: new Uint8Array(await res.arrayBuffer()), filename: `${safeFilename(title)}.pdf`, mime: 'application/pdf' };
   }
 }
@@ -71,7 +96,7 @@ export class HtmlFileRenderer implements DocumentRenderer {
   }
 }
 
-export function getRenderer(): DocumentRenderer {
+export function getRenderer(observe?: CallObserver): DocumentRenderer {
   const url = Deno.env.get('PDF_SERVICE_URL');
-  return url ? new GotenbergRenderer(url, Deno.env.get('PDF_SERVICE_BASIC_AUTH')) : new HtmlFileRenderer();
+  return url ? new GotenbergRenderer(url, Deno.env.get('PDF_SERVICE_BASIC_AUTH'), observe) : new HtmlFileRenderer();
 }

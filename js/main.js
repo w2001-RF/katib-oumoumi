@@ -10,6 +10,7 @@ import { renderAdminLogin } from './admin/adminLogin.js';
 import { renderAdminDashboard } from './admin/adminDashboard.js';
 import { renderAdminCategories } from './admin/adminCategories.js';
 import { renderAdminDocTypeEditor } from './admin/adminDocTypeEditor.js';
+import { renderAdminAgents } from './admin/adminAgents.js';
 import { supabaseReady } from './supabaseClient.js';
 
 registerRoute('/', renderHome);
@@ -23,6 +24,7 @@ registerRoute('/settings', renderSettings);
 registerRoute('/admin/login', renderAdminLogin);
 registerRoute('/admin', renderAdminDashboard);
 registerRoute('/admin/categories', renderAdminCategories);
+registerRoute('/admin/agents', renderAdminAgents);
 registerRoute('/admin/doctype/new', (container) => renderAdminDocTypeEditor(container, { id: 'new' }));
 registerRoute('/admin/doctype/:id/edit', (container, params) => renderAdminDocTypeEditor(container, params));
 

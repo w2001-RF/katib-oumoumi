@@ -1,3 +1,5 @@
+import { errorKindFor, messageOf, providerOf, readRateLimit, redact } from '../metrics/classify.ts';
+import { type CallObserver, emit } from '../metrics/types.ts';
 import { parseJsonReply } from './json.ts';
 import type { ChatRequest, JsonSchema, LLM, ModelCapabilities } from './types.ts';
 import { LLMError } from './types.ts';
@@ -14,6 +16,10 @@ export interface EndpointConfig {
   retryBudgetMs?: number;
   /** For tests. */
   sleep?: (ms: number) => Promise<void>;
+  /** Telemetry: told about every attempt (latency, tokens, errors, rate limits). */
+  observe?: CallObserver;
+  /** Which role this endpoint serves (main, vision, fast, fallback), for telemetry. */
+  role?: string;
 }
 
 const DEFAULT_RETRIES = 2;
@@ -46,7 +52,9 @@ function retryAfterMs(res: Response): number | undefined {
 
 // Throws an LLMError; 404/408/429/5xx and network failures are retryable (the
 // FallbackLLM then tries the next provider).
-export async function postJson(url: string, apiKey: string, body: unknown, timeoutMs: number): Promise<any> {
+// `onResponse` sees the raw response (status, rate-limit headers) before the body is read.
+export async function postJson(url: string, apiKey: string, body: unknown, timeoutMs: number,
+  onResponse?: (res: Response) => void): Promise<any> {
   let res: Response;
   try {
     res = await fetch(url, {
@@ -58,6 +66,7 @@ export async function postJson(url: string, apiKey: string, body: unknown, timeo
   } catch (e) {
     throw new LLMError(`Request to ${url} failed: ${(e as Error).message}`, null, true);
   }
+  onResponse?.(res);
   if (!res.ok) {
     const detail = (await res.text().catch(() => '')).slice(0, 500);
     // 404: providers retire and rename models (Google retired gemini-2.5-flash
@@ -69,16 +78,27 @@ export async function postJson(url: string, apiKey: string, body: unknown, timeo
   return res.json();
 }
 
+// Text of a chat completion; null when there is none. Some servers return
+// content parts even for plain text answers.
+function replyText(data: any): string | null {
+  const content = data?.choices?.[0]?.message?.content;
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) return content.map((p: { text?: string }) => p.text || '').join('');
+  return null;
+}
+
 // One adapter for every provider that speaks the OpenAI Chat Completions
 // format: Google AI Studio, Groq, OpenRouter, Mistral, Together, Ollama,
 // vLLM, LM Studio, OpenAI, Anthropic's compatibility endpoint...
 export class OpenAICompatibleLLM implements LLM {
   readonly name: string;
   readonly caps: ModelCapabilities;
+  private readonly provider: string;
 
   constructor(private readonly cfg: EndpointConfig) {
     this.name = cfg.model;
     this.caps = cfg.caps;
+    this.provider = providerOf(cfg.baseUrl);
   }
 
   // Free tiers answer 503 "high demand" / 429 often, and it passes within
@@ -90,7 +110,7 @@ export class OpenAICompatibleLLM implements LLM {
     const started = Date.now();
     for (let attempt = 0; ; attempt++) {
       try {
-        return await this.chatOnce(req, responseFormat);
+        return await this.chatOnce(req, responseFormat, attempt);
       } catch (e) {
         if (!(e instanceof LLMError) || !e.transient || attempt >= retries) throw e;
         const delay = Math.min(e.retryAfterMs ?? RETRY_BASE_MS * 2 ** attempt, RETRY_MAX_DELAY_MS);
@@ -101,7 +121,7 @@ export class OpenAICompatibleLLM implements LLM {
     }
   }
 
-  private async chatOnce(req: ChatRequest, responseFormat?: unknown): Promise<string> {
+  private async chatOnce(req: ChatRequest, responseFormat: unknown, attempt: number): Promise<string> {
     const body: Record<string, unknown> = {
       model: this.cfg.model,
       messages: req.messages,
@@ -109,12 +129,44 @@ export class OpenAICompatibleLLM implements LLM {
     };
     if (req.maxTokens) body.max_tokens = req.maxTokens;
     if (responseFormat) body.response_format = responseFormat;
-    const data = await postJson(joinUrl(this.cfg.baseUrl, 'chat/completions'), this.cfg.apiKey, body, this.cfg.timeoutMs ?? 45000);
-    const content = data?.choices?.[0]?.message?.content;
-    if (typeof content === 'string') return content;
-    // Some servers return content parts even for plain text answers.
-    if (Array.isArray(content)) return content.map((p: { text?: string }) => p.text || '').join('');
-    throw new LLMError(`Empty reply from ${this.cfg.model}`, null, true);
+    const started = Date.now();
+    let res: Response | undefined;
+    try {
+      const data = await postJson(joinUrl(this.cfg.baseUrl, 'chat/completions'), this.cfg.apiKey, body,
+        this.cfg.timeoutMs ?? 45000, (r) => (res = r));
+      const text = replyText(data);
+      if (text === null) throw new LLMError(`Empty reply from ${this.cfg.model}`, null, true);
+      this.report(req, attempt, started, res, { usage: data?.usage });
+      return text;
+    } catch (e) {
+      this.report(req, attempt, started, res, { error: e });
+      throw e;
+    }
+  }
+
+  private report(req: ChatRequest, attempt: number, started: number, res: Response | undefined,
+    outcome: { usage?: { prompt_tokens?: number; completion_tokens?: number }; error?: unknown }) {
+    const { error, usage } = outcome;
+    // An empty reply comes with HTTP 200: report the status the server sent.
+    const status = res?.status ?? (error instanceof LLMError ? error.status : null);
+    const message = error ? messageOf(error) : '';
+    emit(this.cfg.observe, {
+      service: 'llm',
+      provider: this.provider,
+      model: this.cfg.model,
+      role: this.cfg.role,
+      operation: 'chat',
+      task: req.task,
+      ok: !error,
+      httpStatus: status,
+      errorKind: error ? errorKindFor(status, message) : undefined,
+      error: error ? redact(message) : undefined,
+      latencyMs: Date.now() - started,
+      attempt,
+      inputTokens: usage?.prompt_tokens,
+      outputTokens: usage?.completion_tokens,
+      rateLimit: res ? readRateLimit(res.headers) : undefined,
+    });
   }
 
   private responseFormat(schema: JsonSchema, schemaName: string): unknown {
@@ -133,13 +185,15 @@ export class OpenAICompatibleLLM implements LLM {
       content: `Answer with ONE JSON object only, no prose, no code fences. It must match this JSON schema:\n${JSON.stringify(schema)}`,
     };
     const messages = [...req.messages, instruction];
-    const first = await this.chat({ ...req, messages }, format);
+    const task = req.task ?? schemaName;
+    const first = await this.chat({ ...req, task, messages }, format);
     try {
       return parseJsonReply<T>(first);
     } catch {
       const retry = await this.chat(
         {
           ...req,
+          task,
           temperature: 0,
           messages: [
             ...messages,

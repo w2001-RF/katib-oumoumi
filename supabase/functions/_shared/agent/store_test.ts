@@ -68,8 +68,13 @@ Deno.test('forget, profile read/write', async () => {
   const { db, store } = storeWith((call) => (kind(call) === 'select' ? ok(profileRows) : ok(null)));
   await store.forgetUser('u1');
   assertEquals(db.calls.map((c: Call) => `${kind(c)}:${c.table}`), [
-    'delete:agent_user_profiles', 'delete:agent_conversations', 'update:agent_channel_users',
+    'delete:agent_user_profiles', 'delete:agent_conversations', 'update:agent_channel_users', 'update:agent_turns',
   ]);
+  assertEquals(argsOf(db.calls.at(-1), 'update'), [{ user_id: null }]);
+  // Before migration 003 the telemetry table is missing: /forget still works.
+  db.reset((call: Call) => (call.table === 'agent_turns' ? { data: null, error: { message: 'relation does not exist' } } : ok(null)));
+  await store.forgetUser('u1');
+  db.reset((call: Call) => (kind(call) === 'select' ? ok(profileRows) : ok(null)));
   assertEquals(await store.getProfile('u1'), { cin: 'G1' });
   profileRows = [];
   assertEquals(await store.getProfile('u1'), {});
