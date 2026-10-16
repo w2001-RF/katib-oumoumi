@@ -3,6 +3,8 @@
 تطبيق ويب (Single Page Application) بلغة JavaScript الخام (Vanilla JS)، بدون أي إطار عمل
 (framework) وبدون خطوة بناء (build step)، يتصل مباشرة بـ Supabase، ويُنشر على GitHub Pages.
 
+🌐 **التطبيق متاح على: <https://katiboumoumi.online/>**
+
 يولّد التطبيق وثائق إدارية مغربية (شكايات، توكيلات، عقود...) بصيغتي **Word** و **PDF**
 انطلاقاً من قوالب يُعدّها المسؤول (Admin)، ويملؤها المستخدم العادي عبر نموذج ديناميكي.
 
@@ -68,6 +70,16 @@
 
 بعد نجاح أول عملية نشر، سيكون التطبيق متاحاً على الرابط الذي يظهر في تبويب **Actions**
 أو في **Settings → Pages**.
+
+### النطاق (Domain)
+
+التطبيق منشور على النطاق الخاص **<https://katiboumoumi.online/>**:
+
+- في **Settings → Pages → Custom domain** يكون النطاق `katiboumoumi.online`، مع تفعيل
+  **Enforce HTTPS** حتى يُحوَّل كل طلب `http://` تلقائياً إلى `https://`.
+- ملفات الجذر مرتبطة بهذا النطاق: `robots.txt` و`sitemap.xml` (`https://katiboumoumi.online/sitemap.xml`)
+  و`ads.txt` (انظر [`docs/google-ads.md`](docs/google-ads.md))، وكذلك الرابط القانوني (canonical)
+  وبطاقات المشاركة (Open Graph) في `index.html`. إذا تغيّر النطاق، يجب تحديثها كلها.
 
 ---
 

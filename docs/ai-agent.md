@@ -4,6 +4,8 @@
 (البطاقة الوطنية، رسالة توصل بها المستخدم...)، ويسوّل على المعلومات الناقصة حتى تكمل الوثيقة،
 ثم يرسل ملف PDF. موجّه بالخصوص للأشخاص الأميين والمكفوفين.
 
+**التطبيق**: <https://katiboumoumi.online/> · **لوحة مراقبة الوكلاء**: <https://katiboumoumi.online/#/admin/agents>
+
 **المخططات**: [البنية العامة للنظام](diagrams/system-architecture.html) ·
 [مسار المحادثة مع البوت](diagrams/agent-workflow.html) — انظر [`docs/diagrams/`](diagrams/README.md).
 
@@ -117,7 +119,7 @@ npx @sonar/scan "-Dsonar.host.url=http://localhost:9000"
 
 ## 6. لوحة مراقبة الوكلاء (للمسؤول)
 
-لوحة التحكم ← **مراقبة الوكلاء الأذكياء** (`#/admin/agents`). كتعرض لكل فترة (24 ساعة، 7، 30، 90 يوم)
+لوحة التحكم ← **مراقبة الوكلاء الأذكياء** ([`katiboumoumi.online/#/admin/agents`](https://katiboumoumi.online/#/admin/agents)). كتعرض لكل فترة (24 ساعة، 7، 30، 90 يوم)
 مقارنة مع الفترة اللي قبلها:
 
 | الجزء | شنو كيبيّن |

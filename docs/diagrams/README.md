@@ -6,7 +6,7 @@ from the JSON files in this folder. Each `.html` file is self-contained: open it
 
 | Diagram | Shows |
 |---|---|
-| [System architecture](system-architecture.html) | The two ways in (web app on GitHub Pages, Telegram bot), the Supabase project (Postgres + RLS, Auth, Edge Function, agent tables) and the external services (AI providers, Gotenberg) |
+| [System architecture](system-architecture.html) | The two ways in (web app on GitHub Pages at <https://katiboumoumi.online/>, Telegram bot), the Supabase project (Postgres + RLS, Auth, Edge Function, agent tables) and the external services (AI providers, Gotenberg) |
 | [Agent conversation workflow](agent-workflow.html) | What happens to a Telegram message: webhook → consent → choose document → collect + validate → read-back → generate, with the AI calls and database writes |
 
 Every node cites the source lines it describes, pinned to commit `f091949`
