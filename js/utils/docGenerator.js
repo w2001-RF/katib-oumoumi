@@ -6,8 +6,9 @@
 //                  the browser itself (SVG <foreignObject>), so Arabic
 //                  shaping and RTL/bidi ordering are exactly what the
 //                  browser displays.
-// Both libraries are loaded as classic <script> tags in index.html and
-// expose `htmlDocx`, `jspdf` and `saveAs` on `window`.
+// Both libraries (and FileSaver) are loaded on demand by ensureExportLibs()
+// and expose `htmlDocx`, `jspdf` and `saveAs` on `window`.
+import { ensureExportLibs } from './exportLibs.js';
 
 function wrapForExport(bodyHtml, title) {
   return `<!DOCTYPE html>
@@ -24,8 +25,8 @@ function wrapForExport(bodyHtml, title) {
   </html>`;
 }
 
-export function exportAsWord(bodyHtml, filename) {
-  if (!globalThis.htmlDocx) throw new Error('مكتبة تصدير Word غير محمّلة');
+export async function exportAsWord(bodyHtml, filename) {
+  await ensureExportLibs(['htmlDocx', 'saveAs']);
   const full = wrapForExport(bodyHtml, filename);
   const blob = globalThis.htmlDocx.asBlob(full, { orientation: 'portrait' });
   globalThis.saveAs(blob, `${filename}.docx`);
@@ -190,7 +191,7 @@ async function layoutDocument(bodyHtml) {
 // rasterize the document (some Safari versions taint foreignObject canvases)
 // — use printDocument() then.
 export async function generatePdfBlob(bodyHtml) {
-  if (!globalThis.jspdf) throw new Error('مكتبة تصدير PDF غير محمّلة');
+  await ensureExportLibs(['jspdf']);
   const { frame, styleTag, docEl } = await layoutDocument(bodyHtml);
   try {
     const height = Math.ceil(docEl.getBoundingClientRect().height);
@@ -226,6 +227,7 @@ export async function exportAsPdf(bodyHtml, filename, pdfBlob) {
     await printDocument(bodyHtml, filename);
     return 'print';
   }
+  await ensureExportLibs(['saveAs']);
   globalThis.saveAs(blob, `${filename}.pdf`);
   return 'download';
 }

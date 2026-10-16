@@ -37,14 +37,16 @@ export function isTabPath(path) {
   return NAV_ITEMS.some((i) => i.path === path);
 }
 
-export function renderHeader({ title, showBack = false, showSearch = false, rightSlot = '', brand = false }) {
+// `titleTag`: 'h1' by default; the home page passes 'p' because its hero
+// carries the page's single H1. `brand`: show the seal before the title.
+export function renderHeader({ title, showBack = false, showSearch = false, rightSlot = '', titleTag = 'h1', brand = false }) {
   let left = '<span class="spacer"></span>';
   if (showBack) left = `<button class="icon-btn" data-action="back" aria-label="رجوع">${icon('arrowRight')}</button>`;
   else if (showSearch) left = `<button class="icon-btn" data-action="search" aria-label="بحث">${icon('search')}</button>`;
   const right = rightSlot || '<span class="spacer"></span>';
   return `<header class="app-header">
     ${left}
-    <h1>${brand ? `<span class="brand">${BRAND_MARK}<span>${title}</span></span>` : title}</h1>
+    <${titleTag} class="app-title">${brand ? `<span class="brand">${BRAND_MARK}<span>${title}</span></span>` : title}</${titleTag}>
     ${right}
   </header>`;
 }
