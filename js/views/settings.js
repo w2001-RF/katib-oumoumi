@@ -2,7 +2,7 @@ import { icon } from '../utils/icons.js';
 import { renderHeader, renderBottomNav, showToast } from '../ui.js';
 
 const APP_VERSION = 'v1.0.0';
-const CONTACT_EMAIL = 'contact@katibomoumi.com';
+const CONTACT_EMAIL = 'contact@katibomoumi.online';
 
 export async function renderSettings(container) {
   container.innerHTML = `
