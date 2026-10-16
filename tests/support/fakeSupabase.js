@@ -45,6 +45,13 @@ export function createFakeClient(handler = () => ({ data: [], error: null })) {
       client.calls.push(call);
       return Promise.resolve(client.handler(call));
     },
+    functions: {
+      invoke: (name, options) => {
+        const call = { table: null, fn: name, options, ops: [] };
+        client.calls.push(call);
+        return Promise.resolve(client.handler(call));
+      },
+    },
     auth: {
       signInWithPassword: (creds) => Promise.resolve(client.handler({ auth: 'signIn', creds, ops: [] })),
       signOut: () => Promise.resolve(client.handler({ auth: 'signOut', ops: [] })),

@@ -15,10 +15,13 @@ import type { Role } from '../ai/registry.ts';
 import { type LLM, LLMError, type SpeechToText, type TextToSpeech } from '../ai/types.ts';
 import type { Button, Channel } from '../channels/types.ts';
 import type { DocumentRenderer } from '../docs/render.ts';
+import { errorText } from '../metrics/classify.ts';
+import type { TurnMetrics, TurnOutcome } from '../metrics/types.ts';
 import { isCancel, isYes, MSG } from './messages.ts';
 import { normalizeValue } from './normalize.ts';
 import type { AgentStore } from './store.ts';
 import { detectIntent, extractFields, type ExtractResult, phraseQuestion, rewriteFormal } from './tasks.ts';
+import { type TurnTrace, turnRecord } from './telemetry.ts';
 import type { AgentDocument, AgentUser, CatalogEntry, Conversation, IncomingMessage, TemplateField } from './types.ts';
 
 export interface AgentDeps {
@@ -29,6 +32,8 @@ export interface AgentDeps {
   tts: TextToSpeech | null;
   renderer: DocumentRenderer;
   today?: () => string; // YYYY-MM-DD, injectable for tests
+  /** Telemetry for the admin dashboard; absent = nothing recorded. */
+  metrics?: TurnMetrics;
 }
 
 const INTENT_MIN_CONFIDENCE = 0.6;
@@ -39,6 +44,7 @@ interface Ctx {
   deps: AgentDeps;
   user: AgentUser;
   chatId: string;
+  trace: TurnTrace;
 }
 
 interface Input {
@@ -49,16 +55,36 @@ interface Input {
 // --- entry point -------------------------------------------------------------
 
 export async function handleMessage(deps: AgentDeps, msg: IncomingMessage): Promise<void> {
-  const user = await deps.store.upsertUser(msg.channel, msg.externalUserId, msg.displayName);
-  if (!(await deps.store.claimUpdate(user.id, msg.updateId))) return; // webhook retry
-  const ctx: Ctx = { deps, user, chatId: msg.chatId };
+  const started = msg.receivedAt ?? Date.now();
+  const trace: TurnTrace = { generated: false };
+  let result: { userId?: string; outcome: TurnOutcome; error?: string } = { outcome: 'ok' };
+  try {
+    const user = await deps.store.upsertUser(msg.channel, msg.externalUserId, msg.displayName);
+    result.userId = user.id;
+    if (!(await deps.store.claimUpdate(user.id, msg.updateId))) {
+      result.outcome = 'duplicate'; // webhook retry
+      return;
+    }
+    result = { ...result, ...(await runTurn({ deps, user, chatId: msg.chatId, trace }, msg)) };
+  } catch (e) {
+    result = { ...result, outcome: 'error', error: errorText(e) };
+    throw e;
+  } finally {
+    await deps.metrics?.finishTurn(turnRecord(msg, trace, { ...result, latencyMs: Date.now() - started }));
+  }
+}
+
+// Handles the message; any failure becomes a reply to the user and an outcome.
+async function runTurn(ctx: Ctx, msg: IncomingMessage): Promise<{ outcome: TurnOutcome; error?: string }> {
   try {
     await route(ctx, msg);
+    return { outcome: 'ok' };
   } catch (e) {
     console.error('[agent] failed to handle message', e);
     // The AI provider is overloaded even after retries: say so, the user can simply resend.
     const busy = e instanceof LLMError && e.transient;
-    await deps.channel.sendText(msg.chatId, busy ? MSG.busy : MSG.error).catch(() => {});
+    await ctx.deps.channel.sendText(msg.chatId, busy ? MSG.busy : MSG.error).catch(() => {});
+    return { outcome: busy ? 'busy' : 'error', error: errorText(e) };
   }
 }
 
@@ -104,7 +130,10 @@ async function converse(ctx: Ctx, msg: IncomingMessage) {
   const input = await readInput(ctx, msg);
   if (!input) return;
 
-  const conv = (await store.getActiveConversation(ctx.user.id)) ?? (await store.createConversation(ctx.user.id));
+  const active = await store.getActiveConversation(ctx.user.id);
+  const conv = active ?? (await store.createConversation(ctx.user.id));
+  ctx.trace.conv = conv;
+  ctx.trace.stateBefore = active ? conv.status : 'new';
   if (conv.status === 'choosing') return choosing(ctx, conv, input, msg.action);
 
   const doc = conv.document_type_id ? await store.getDocument(conv.document_type_id) : null;
@@ -128,7 +157,7 @@ async function readInput(ctx: Ctx, msg: IncomingMessage): Promise<Input | null> 
       return null;
     }
     await ctx.deps.channel.showActivity(ctx.chatId, 'typing');
-    text = await stt.transcribe(msg.audio.data, msg.audio.mime);
+    text = await stt.transcribe(msg.audio.data, msg.audio.mime, msg.audio.seconds);
     if (!ctx.user.prefers_voice) await store.setPrefersVoice(ctx.user.id, true);
     ctx.user.prefers_voice = true;
     if (!text) {
@@ -370,6 +399,7 @@ async function generate(ctx: Ctx, conv: Conversation, doc: AgentDocument) {
   const file = await renderer.render(html, doc.name_ar);
   const caption = file.mime === 'application/pdf' ? MSG.done : `${MSG.done}\n${MSG.htmlFallback}`;
   await channel.sendDocument(ctx.chatId, file, caption);
+  ctx.trace.generated = true;
 
   conv.status = 'done';
   conv.asked_keys = [];

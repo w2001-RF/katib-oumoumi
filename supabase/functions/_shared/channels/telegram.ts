@@ -3,28 +3,64 @@
 
 import type { IncomingMessage } from '../agent/types.ts';
 import { toBlob } from '../ai/base64.ts';
+import { errorKindFor, redact } from '../metrics/classify.ts';
+import { type CallObserver, emit } from '../metrics/types.ts';
 import type { Button, Channel } from './types.ts';
 
 const API = 'https://api.telegram.org';
 const MAX_TEXT = 4000; // Telegram limit is 4096
 const MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024; // Bot API getFile limit
+// Typing indicators are frequent and best effort: not worth a telemetry row.
+const UNRECORDED_METHODS = new Set(['sendChatAction']);
+
+export class TelegramApiError extends Error {
+  constructor(message: string, readonly status: number | null) {
+    super(message);
+    this.name = 'TelegramApiError';
+  }
+}
 
 export class TelegramChannel implements Channel {
   readonly name = 'telegram' as const;
 
-  constructor(private readonly token: string) {}
+  /** `observe` receives one telemetry event per Bot API call (see _shared/metrics). */
+  constructor(private readonly token: string, private readonly observe?: CallObserver) {}
 
   private async call(method: string, body: Record<string, unknown> | FormData): Promise<any> {
-    const isForm = body instanceof FormData;
-    const res = await fetch(`${API}/bot${this.token}/${method}`, {
-      method: 'POST',
-      headers: isForm ? {} : { 'Content-Type': 'application/json' },
-      body: isForm ? body : JSON.stringify(body),
-      signal: AbortSignal.timeout(60000),
+    return await this.observed(method, async () => {
+      const isForm = body instanceof FormData;
+      let res: Response;
+      try {
+        res = await fetch(`${API}/bot${this.token}/${method}`, {
+          method: 'POST',
+          headers: isForm ? {} : { 'Content-Type': 'application/json' },
+          body: isForm ? body : JSON.stringify(body),
+          signal: AbortSignal.timeout(60000),
+        });
+      } catch (e) {
+        // The message of a network error contains the URL, hence the bot token.
+        throw new TelegramApiError(`Telegram ${method} unreachable: ${redact((e as Error).message)}`, null);
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new TelegramApiError(`Telegram ${method} failed: ${res.status} ${data.description ?? ''}`, res.status);
+      return data.result;
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.ok) throw new Error(`Telegram ${method} failed: ${res.status} ${data.description ?? ''}`);
-    return data.result;
+  }
+
+  private async observed<T>(operation: string, run: () => Promise<T>): Promise<T> {
+    const started = Date.now();
+    const event = { service: 'channel' as const, provider: 'telegram', operation };
+    try {
+      const result = await run();
+      if (!UNRECORDED_METHODS.has(operation)) emit(this.observe, { ...event, ok: true, httpStatus: 200, latencyMs: Date.now() - started });
+      return result;
+    } catch (e) {
+      const status = e instanceof TelegramApiError ? e.status : null;
+      const message = (e as Error).message;
+      emit(this.observe, { ...event, ok: false, httpStatus: status, errorKind: errorKindFor(status, message), error: redact(message),
+        latencyMs: Date.now() - started });
+      throw e;
+    }
   }
 
   async sendText(chatId: string, text: string, buttons?: Button[][]) {
@@ -68,9 +104,11 @@ export class TelegramChannel implements Channel {
   async download(fileId: string): Promise<Uint8Array> {
     const info = await this.call('getFile', { file_id: fileId });
     if (info.file_size && info.file_size > MAX_DOWNLOAD_BYTES) throw new Error('File too large');
-    const res = await fetch(`${API}/file/bot${this.token}/${info.file_path}`, { signal: AbortSignal.timeout(60000) });
-    if (!res.ok) throw new Error(`Telegram file download failed: ${res.status}`);
-    return new Uint8Array(await res.arrayBuffer());
+    return await this.observed('downloadFile', async () => {
+      const res = await fetch(`${API}/file/bot${this.token}/${info.file_path}`, { signal: AbortSignal.timeout(60000) });
+      if (!res.ok) throw new TelegramApiError(`Telegram file download failed: ${res.status}`, res.status);
+      return new Uint8Array(await res.arrayBuffer());
+    });
   }
 
   // Webhook update -> IncomingMessage. Null for updates the bot ignores
@@ -101,7 +139,7 @@ export class TelegramChannel implements Channel {
     };
     const voice = m.voice ?? m.audio;
     if (voice) {
-      msg.audio = { data: await this.download(voice.file_id), mime: voice.mime_type || 'audio/ogg' };
+      msg.audio = { data: await this.download(voice.file_id), mime: voice.mime_type || 'audio/ogg', seconds: Number(voice.duration) || undefined };
     } else if (m.photo?.length) {
       const largest = m.photo[m.photo.length - 1];
       msg.image = { data: await this.download(largest.file_id), mime: 'image/jpeg' };

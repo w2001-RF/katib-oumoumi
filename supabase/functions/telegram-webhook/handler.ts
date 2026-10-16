@@ -6,16 +6,20 @@
 
 import { type AgentDeps, handleMessage } from '../_shared/agent/engine.ts';
 import { TelegramChannel } from '../_shared/channels/telegram.ts';
+import { errorText } from '../_shared/metrics/classify.ts';
+import type { CallObserver, TurnMetrics } from '../_shared/metrics/types.ts';
 
 export interface WebhookConfig {
   token: string;
   secret: string;
-  /** Builds the agent's dependencies for one update. */
-  makeDeps: (channel: TelegramChannel) => AgentDeps;
+  /** Builds the agent's dependencies for one update; `metrics` is that update's recorder. */
+  makeDeps: (channel: TelegramChannel, metrics?: TurnMetrics) => AgentDeps;
+  /** One telemetry recorder per update (admin dashboard); absent = nothing recorded. */
+  makeMetrics?: () => TurnMetrics;
   /** Keeps background work alive after the response (EdgeRuntime.waitUntil); absent = wait inline. */
   waitUntil?: (work: Promise<unknown>) => void;
   /** For tests: replaces the real Telegram adapter. */
-  makeChannel?: (token: string) => TelegramChannel;
+  makeChannel?: (token: string, observe?: CallObserver) => TelegramChannel;
 }
 
 export function timingSafeEqual(a: string, b: string): boolean {
@@ -25,10 +29,27 @@ export function timingSafeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
-async function handleUpdate(update: unknown, channel: TelegramChannel, config: WebhookConfig) {
+async function handleUpdate(update: unknown, config: WebhookConfig) {
+  const receivedAt = Date.now();
+  const metrics = config.makeMetrics?.();
+  const channel = config.makeChannel
+    ? config.makeChannel(config.token, metrics?.observe)
+    : new TelegramChannel(config.token, metrics?.observe);
+  let msg;
   try {
-    const msg = await channel.parseUpdate(update);
-    if (msg) await handleMessage(config.makeDeps(channel), msg);
+    msg = await channel.parseUpdate(update);
+  } catch (e) {
+    // e.g. the voice note could not be downloaded: the user got no answer.
+    console.error('[telegram-webhook] could not read update', e);
+    await metrics?.finishTurn({
+      channel: 'telegram', inputKind: 'other', outcome: 'error', documentGenerated: false,
+      latencyMs: Date.now() - receivedAt, error: errorText(e),
+    });
+    return;
+  }
+  if (!msg) return;
+  try {
+    await handleMessage({ ...config.makeDeps(channel, metrics), metrics }, { ...msg, receivedAt });
   } catch (e) {
     console.error('[telegram-webhook] update failed', e);
   }
@@ -45,8 +66,7 @@ export function createWebhookHandler(config: WebhookConfig): (req: Request) => P
     const update = await req.json().catch(() => null);
     if (!update) return new Response('Bad request', { status: 400 });
 
-    const channel = config.makeChannel ? config.makeChannel(config.token) : new TelegramChannel(config.token);
-    const work = handleUpdate(update, channel, config);
+    const work = handleUpdate(update, config);
     if (config.waitUntil) config.waitUntil(work);
     else await work;
     return new Response('ok');

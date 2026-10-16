@@ -416,3 +416,43 @@ export async function adminStats() {
   ]);
   return { totalDocs: totalDocs || 0, totalGenerated: totalGenerated || 0, totalCategories: totalCategories || 0 };
 }
+
+// --- Admin: AI agents dashboard (migration 003 + Edge Function agent-status) ---
+
+/** Aggregated telemetry for [from, to); see agent_dashboard() in migration 003. */
+export async function adminAgentDashboard({ from, to, tz = 'Africa/Casablanca' }) {
+  assertClient();
+  const { data, error } = await supabase.rpc('agent_dashboard', { p_from: from.toISOString(), p_to: to.toISOString(), p_tz: tz });
+  if (error) throw error;
+  return data;
+}
+
+/** Configuration and live health (models, Telegram webhook, credits). `probe` also calls each provider. */
+export async function adminAgentStatus({ probe = false } = {}) {
+  assertClient();
+  const { data, error } = await supabase.functions.invoke('agent-status', { body: { probe } });
+  if (error) throw error;
+  return data;
+}
+
+export async function adminSaveModelPrice(row) {
+  assertClient();
+  const { error } = await supabase
+    .from('agent_model_prices')
+    .upsert({ ...row, updated_at: new Date().toISOString() }, { onConflict: 'provider,model' });
+  if (error) throw error;
+}
+
+export async function adminDeleteModelPrice(provider, model) {
+  assertClient();
+  const { error } = await supabase.from('agent_model_prices').delete().eq('provider', provider).eq('model', model);
+  if (error) throw error;
+}
+
+export async function adminSaveProviderBudget(row) {
+  assertClient();
+  const { error } = await supabase
+    .from('agent_provider_budgets')
+    .upsert({ ...row, updated_at: new Date().toISOString() }, { onConflict: 'provider' });
+  if (error) throw error;
+}
