@@ -819,3 +819,41 @@ details summary { cursor: pointer; font-size: 0.8rem; font-weight: 700; color: v
   .hbars li { grid-template-columns: 1fr auto; }
   .hbars .hb-track { grid-column: 1 / -1; grid-row: 2; }
 }
+
+/* ==========================================================================
+   Home: page H1 in the hero, written content and footer (SEO)
+   ========================================================================== */
+.app-header .app-title {
+  flex: 1;
+  text-align: center;
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 0;
+}
+.hero-banner h1 {
+  margin: 0 0 6px;
+  font-size: 1.15rem;
+  line-height: 1.5;
+  color: var(--gold-400);
+}
+h2.section-title { line-height: 1.4; }
+
+.seo-content { margin-top: 26px; font-size: 0.88rem; line-height: 1.9; color: var(--text); }
+.seo-content h2 { font-size: 0.98rem; margin: 22px 0 8px; color: var(--navy-800); }
+.seo-content p { margin: 0 0 10px; }
+.seo-content ol, .seo-content ul { margin: 0 0 10px; padding-inline-start: 22px; display: grid; gap: 6px; }
+.seo-content a { color: var(--navy-700); font-weight: 700; text-decoration: underline; }
+.seo-content .small-note { margin-top: 14px; }
+
+.site-footer {
+  margin-top: 26px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  display: grid;
+  gap: 10px;
+}
+.site-footer nav { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.site-footer a { color: var(--navy-700); font-weight: 700; }
+.site-footer a:hover { text-decoration: underline; }

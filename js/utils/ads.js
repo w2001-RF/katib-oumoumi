@@ -17,6 +17,10 @@
 //     timeoutMs: 8000,                      // waiting for an ad to be ready
 //   };
 
+import { loadScript } from './loadScript.js';
+
+export { loadScript, resetScriptCache } from './loadScript.js';
+
 export const GPT_SRC = 'https://securepubads.g.doubleclick.net/tag/js/gpt.js';
 const DEFAULT_TIMEOUT_MS = 8000;
 
@@ -38,31 +42,6 @@ export function adsConfig(raw = globalThis.ADS_CONFIG) {
 
 export function adsEnabled(config = adsConfig()) {
   return config.provider !== 'none';
-}
-
-const loading = new Map();
-
-/** Adds a <script> once; resolves when loaded, rejects on error (e.g. blocked by an ad blocker). */
-export function loadScript(src, doc = globalThis.document) {
-  if (!loading.has(src)) {
-    loading.set(src, new Promise((resolve, reject) => {
-      const el = doc.createElement('script');
-      el.src = src;
-      el.async = true;
-      el.onload = () => resolve();
-      el.onerror = () => {
-        loading.delete(src); // let a later tap try again
-        reject(new Error(`could not load ${src}`));
-      };
-      doc.head.appendChild(el);
-    }));
-  }
-  return loading.get(src);
-}
-
-/** For tests. */
-export function resetScriptCache() {
-  loading.clear();
 }
 
 /**
