@@ -5,8 +5,7 @@ import { fetchDocumentType, fetchTemplateFields } from '../api.js';
 import { renderTemplate } from '../utils/templateEngine.js';
 import { exportAsWord, exportAsPdf } from '../utils/docGenerator.js';
 import { documentLoader, bindShareButton } from '../utils/shareButton.js';
-
-const AD_SECONDS = 4;
+import { AdResult, adsConfig, adsEnabled, showRewardedAd } from '../utils/ads.js';
 
 export async function renderReady(container, params) {
   container.innerHTML = `
@@ -47,33 +46,40 @@ export async function renderReady(container, params) {
   const actionsSlot = container.querySelector('#actions-slot');
   const loadDocument = documentLoader(() => filledHtml);
 
-  function renderGate() {
+  const ads = adsConfig();
+
+  // Without ads configured the downloads are shown at once.
+  function renderGate(note = 'إعلان قصير · مجاني تماماً · بدون اشتراك') {
+    if (!adsEnabled(ads)) {
+      renderUnlocked();
+      return;
+    }
     actionsSlot.innerHTML = `
       <button class="btn-gold" id="watch-ad-btn" style="width:100%;justify-content:center;">
         ${icon('play')} شاهد إعلاناً قصيراً لتحميل الوثيقة
       </button>
-      <p class="ad-note">إعلان قصير · مجاني تماماً · بدون اشتراك</p>
+      <p class="ad-note">${note}</p>
     `;
-    container.querySelector('#watch-ad-btn').addEventListener('click', runAdSimulation);
+    container.querySelector('#watch-ad-btn').addEventListener('click', watchAd);
   }
 
-  function runAdSimulation() {
-    let remaining = AD_SECONDS;
+  // Google rewarded ad (js/utils/ads.js): the download unlocks when Google
+  // grants the reward, or when no ad can be shown — never blocks the user.
+  async function watchAd() {
     actionsSlot.innerHTML = `
       <button class="btn-gold" style="width:100%;justify-content:center;" disabled>
-        <span class="spinner"></span> جارٍ عرض الإعلان... (<span id="ad-count">${remaining}</span>)
+        <span class="spinner"></span> جارٍ تحميل الإعلان...
       </button>
       <p class="ad-note">سيتم تحميل الوثيقة بعد انتهاء الإعلان</p>
     `;
-    const counterEl = actionsSlot.querySelector('#ad-count');
-    const timer = setInterval(() => {
-      remaining -= 1;
-      if (counterEl) counterEl.textContent = String(remaining);
-      if (remaining <= 0) {
-        clearInterval(timer);
-        renderUnlocked();
-      }
-    }, 1000);
+    const result = await showRewardedAd(ads);
+    if (!actionsSlot.isConnected) return; // the user left this page meanwhile
+    if (result === AdResult.DISMISSED) {
+      renderGate('أُغلق الإعلان قبل نهايته: شاهده حتى النهاية لتحميل الوثيقة.');
+      return;
+    }
+    renderUnlocked();
+    if (result === AdResult.UNAVAILABLE) showToast('لا يوجد إعلان حالياً، يمكنك تحميل الوثيقة مجاناً');
   }
 
   function renderUnlocked() {
