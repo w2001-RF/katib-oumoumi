@@ -94,9 +94,9 @@ export async function renderReady(container, params) {
     // (sharing must happen within a few seconds of the tap).
     loadDocument();
 
-    actionsSlot.querySelector('#download-word').addEventListener('click', () => {
+    actionsSlot.querySelector('#download-word').addEventListener('click', async () => {
       try {
-        exportAsWord(filledHtml, filename);
+        await exportAsWord(filledHtml, filename);
         showToast('تم تحميل الوثيقة بصيغة Word');
       } catch (e) {
         console.error(e);
