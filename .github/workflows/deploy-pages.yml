@@ -12,7 +12,12 @@ permissions:
   id-token: write
 
 jobs:
+  # The site is only published when the tests pass (.github/workflows/tests.yml).
+  tests:
+    uses: ./.github/workflows/tests.yml
+
   build-and-deploy:
+    needs: tests
     runs-on: ubuntu-latest
 
     environment:

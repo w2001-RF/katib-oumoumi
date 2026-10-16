@@ -1,0 +1,66 @@
+name: Tests
+
+# Runs on every pull request and on pushes to work branches. On main the
+# deploy workflow (deploy-pages.yml) calls it first and only publishes the
+# site when it passes.
+on:
+  pull_request:
+  push:
+    branches-ignore:
+      - main
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: Unit tests (web app + Edge Functions)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      # Same command as in docs/ai-agent.md. tests/deno.json maps the Supabase
+      # client to an in-memory fake: no network, database or secrets needed.
+      - name: Run tests with coverage
+        run: deno test --config tests/deno.json --allow-env --coverage=coverage/raw tests supabase/functions
+
+      - name: Coverage report
+        run: |
+          deno coverage coverage/raw --lcov --output=coverage/lcov.info
+          deno coverage coverage/raw | tail -n 1
+
+      - name: Upload coverage (lcov, for SonarQube)
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: coverage/lcov.info
+          retention-days: 14
+
+  sql:
+    name: SQL migrations (PGlite)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      # Applies schema + migrations in Postgres compiled to WebAssembly and
+      # exercises agent_dashboard() (tests/sql/check_migrations.ts).
+      - name: Check migrations
+        run: deno run --allow-read --allow-env --allow-net --allow-sys tests/sql/check_migrations.ts
