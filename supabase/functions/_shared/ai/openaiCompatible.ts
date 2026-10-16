@@ -8,7 +8,18 @@ export interface EndpointConfig {
   model: string;
   caps: ModelCapabilities;
   timeoutMs?: number;
+  /** Extra attempts on overload/network errors (default 2). */
+  retries?: number;
+  /** Stop retrying once this much time has passed (default 60 s). */
+  retryBudgetMs?: number;
+  /** For tests. */
+  sleep?: (ms: number) => Promise<void>;
 }
+
+const DEFAULT_RETRIES = 2;
+const RETRY_BASE_MS = 1000;
+const RETRY_MAX_DELAY_MS = 8000;
+const RETRY_BUDGET_MS = 60000;
 
 // Without regexes: Sonar flags /\/+$/ as a potential backtracking hotspot.
 export function trimTrailingSlashes(s: string): string {
@@ -25,6 +36,12 @@ export function joinUrl(base: string, path: string): string {
 
 function authHeaders(apiKey: string): Record<string, string> {
   return apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
+}
+
+// Retry-After in seconds (the form AI providers use); undefined when absent.
+function retryAfterMs(res: Response): number | undefined {
+  const seconds = Number(res.headers.get('Retry-After'));
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : undefined;
 }
 
 // Throws an LLMError; 404/408/429/5xx and network failures are retryable (the
@@ -47,7 +64,7 @@ export async function postJson(url: string, apiKey: string, body: unknown, timeo
     // for new keys), so let the fallback model take over and say what to fix.
     const hint = res.status === 404 ? ' — model not found: it may be retired or misspelled, check LLM_*MODEL' : '';
     const retryable = [404, 408, 429].includes(res.status) || res.status >= 500;
-    throw new LLMError(`HTTP ${res.status} from ${url}${hint}: ${detail}`, res.status, retryable);
+    throw new LLMError(`HTTP ${res.status} from ${url}${hint}: ${detail}`, res.status, retryable, retryAfterMs(res));
   }
   return res.json();
 }
@@ -64,7 +81,27 @@ export class OpenAICompatibleLLM implements LLM {
     this.caps = cfg.caps;
   }
 
+  // Free tiers answer 503 "high demand" / 429 often, and it passes within
+  // seconds: retry the same model with backoff (honouring Retry-After) before
+  // giving up, but stay within a time budget so the function is not killed.
   async chat(req: ChatRequest, responseFormat?: unknown): Promise<string> {
+    const retries = this.cfg.retries ?? DEFAULT_RETRIES;
+    const sleep = this.cfg.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+    const started = Date.now();
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.chatOnce(req, responseFormat);
+      } catch (e) {
+        if (!(e instanceof LLMError) || !e.transient || attempt >= retries) throw e;
+        const delay = Math.min(e.retryAfterMs ?? RETRY_BASE_MS * 2 ** attempt, RETRY_MAX_DELAY_MS);
+        if (Date.now() - started + delay > (this.cfg.retryBudgetMs ?? RETRY_BUDGET_MS)) throw e;
+        console.warn(`[ai] ${this.cfg.model}: ${e.status ?? 'network'} — retry ${attempt + 1}/${retries} in ${delay} ms`);
+        await sleep(delay);
+      }
+    }
+  }
+
+  private async chatOnce(req: ChatRequest, responseFormat?: unknown): Promise<string> {
     const body: Record<string, unknown> = {
       model: this.cfg.model,
       messages: req.messages,

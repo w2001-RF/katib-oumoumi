@@ -2,7 +2,7 @@
 // images, menus, corrections and failures.
 // Run: npx deno test --allow-env supabase/functions/_shared
 import { assert, assertEquals, assertStringIncludes } from 'jsr:@std/assert@1';
-import type { LLM } from '../ai/types.ts';
+import { type LLM, LLMError } from '../ai/types.ts';
 import { type DocumentRenderer, HtmlFileRenderer } from '../docs/render.ts';
 import { DOC, FakeSTT, FakeTTS, MemoryStore, msg, RecordingChannel, ScriptedLLM } from '../testing/agentFakes.ts';
 import { type AgentDeps, buildSummary, handleMessage } from './engine.ts';
@@ -204,6 +204,17 @@ Deno.test('unexpected failures end with an apology instead of silence', async ()
   store.logGenerated = () => Promise.reject(new Error('db down'));
   await send({ action: 'confirm:yes' });
   assertEquals(last(), MSG.error);
+});
+
+Deno.test('an overloaded AI provider gets a "busy, resend" reply, not a technical error', async () => {
+  const overloaded: LLM = {
+    name: 'busy', caps: { tools: false, json: 'none', vision: false, audioInput: false },
+    chat: () => Promise.reject(new LLMError('HTTP 503', 503, true)),
+    json: () => Promise.reject(new LLMError('HTTP 503', 503, true)),
+  };
+  const { send, last } = await setup(overloaded);
+  await send({ text: 'بغيت شكاية' });
+  assertEquals(last(), MSG.busy);
 });
 
 Deno.test('voice summary spells the CIN and phone and reads the long text as its summary', () => {
