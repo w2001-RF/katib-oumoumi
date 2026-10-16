@@ -51,6 +51,33 @@ jobs:
           };
           EOF
 
+      # Google Ad Manager rewarded ads (docs/google-ads.md). Repository
+      # *variables*, not secrets: they end up in the public page anyway.
+      # Without GOOGLE_AD_UNIT_PATH the app shows no ads.
+      - name: Generate ads configuration
+        env:
+          GOOGLE_AD_UNIT_PATH: ${{ vars.GOOGLE_AD_UNIT_PATH }}
+          ADS_PERSONALIZED: ${{ vars.ADS_PERSONALIZED }}
+          ADS_TXT: ${{ vars.ADS_TXT }}
+        run: |
+          if [ -n "$GOOGLE_AD_UNIT_PATH" ]; then
+            UNIT_JSON=$(jq -Rn --arg value "$GOOGLE_AD_UNIT_PATH" '$value')
+            NPA=true
+            if [ "$ADS_PERSONALIZED" = "true" ]; then NPA=false; fi
+            cat >> supabase-config.js <<EOF
+          window.ADS_CONFIG = {
+            provider: 'gpt-rewarded',
+            adUnitPath: $UNIT_JSON,
+            nonPersonalized: $NPA
+          };
+          EOF
+          fi
+          # ads.txt line(s) from Ad Manager / AdSense, e.g.
+          # "google.com, pub-0000000000000000, DIRECT, f08c47fec0942fa0"
+          if [ -n "$ADS_TXT" ]; then
+            printf '%s\n' "$ADS_TXT" > ads.txt
+          fi
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
