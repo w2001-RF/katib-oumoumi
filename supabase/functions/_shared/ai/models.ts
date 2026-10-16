@@ -8,6 +8,14 @@ import type { ModelCapabilities } from './types.ts';
 const KNOWN: [prefix: string, caps: ModelCapabilities][] = [
   ['gemini-', { tools: true, json: 'schema', vision: true, audioInput: true }],
   ['gemma-3', { tools: false, json: 'object', vision: true, audioInput: false }],
+  // Ollama names ("gemma3:12b", "qwen3:8b"...); Ollama also reports them itself (see ollama.ts).
+  ['gemma3', { tools: false, json: 'object', vision: true, audioInput: false }],
+  ['qwen3', { tools: true, json: 'object', vision: false, audioInput: false }],
+  ['llava', { tools: false, json: 'object', vision: true, audioInput: false }],
+  ['minicpm-v', { tools: false, json: 'object', vision: true, audioInput: false }],
+  ['mistral-small3', { tools: true, json: 'object', vision: true, audioInput: false }],
+  ['granite3.2-vision', { tools: false, json: 'object', vision: true, audioInput: false }],
+  ['gpt-oss', { tools: true, json: 'object', vision: false, audioInput: false }],
   ['claude-', { tools: true, json: 'none', vision: true, audioInput: false }],
   ['gpt-4o', { tools: true, json: 'schema', vision: true, audioInput: false }],
   ['gpt-4.1', { tools: true, json: 'schema', vision: true, audioInput: false }],

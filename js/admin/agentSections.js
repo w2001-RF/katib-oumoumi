@@ -5,7 +5,7 @@
 import { escapeHtml as esc } from '../utils/format.js';
 import {
   availability, bucketLabel, budgetView, capacityOf, CHANNEL_LABELS, channelLevel, delta, ERROR_LABELS, formatCompact,
-  formatCount, formatMinutes, formatMs, formatPercent, formatUsd, isOngoing, labelOf, LEVEL_LABELS, modelLevel,
+  formatCount, formatMinutes, formatMs, formatPercent, formatUsd, isLocalProvider, isOngoing, labelOf, LEVEL_LABELS, modelLevel,
   OUTCOME_LABELS, outageMinutes, ratio, ROLE_LABELS, SERVICE_LABELS, successRate, TASK_LABELS, timeAgo,
 } from './agentMetrics.js';
 import { hbars, lineChart, meter, sparkline, stackedBars } from './charts.js';
@@ -203,8 +203,16 @@ function probeCell(status, m) {
   if (!p) return '—';
   if (!p.ok) return `${pill('down', labelOf(ERROR_LABELS, p.errorKind))}`;
   const listed = p.models?.[m.model];
-  if (listed === false) return pill('degraded', 'غير مدرج');
-  return `${pill('ok', 'متاح')} ${formatMs(p.latencyMs)}`;
+  if (listed === false) return pill('degraded', p.provider === 'ollama' ? 'غير محمّل (ollama pull)' : 'غير مدرج');
+  const inMemory = (p.loaded ?? []).some((l) => l.name === m.model || l.name === `${m.model}:latest`);
+  const memoryText = inMemory ? 'في الذاكرة' : 'غير محمّل في الذاكرة (أول رد أبطأ)';
+  const memory = p.provider === 'ollama' ? `<div class="small-note">${memoryText}</div>` : '';
+  return `${pill('ok', 'متاح')} ${formatMs(p.latencyMs)}${memory}`;
+}
+
+function costCell(m) {
+  if (m.priced) return formatUsd(m.cost_usd);
+  return isLocalProvider(m.provider) ? '<span class="small-note">محلي</span>' : '<span class="small-note">بدون ثمن</span>';
 }
 
 function modelCell(m) {
@@ -235,7 +243,7 @@ export function modelsSection(dash, status, now = new Date()) {
     formatCount(m.retries),
     `${formatMs(m.p50_ms)} / ${formatMs(m.p95_ms)}`,
     m.service === 'stt' ? `${formatMinutes((m.units ?? 0) / 60)} صوت` : `${formatCompact(m.input_tokens)} / ${formatCompact(m.output_tokens)}`,
-    m.priced ? formatUsd(m.cost_usd) : '<span class="small-note">بدون ثمن</span>',
+    costCell(m),
     capacityCell(m.rate_limit),
     formatMinutes(down[`${m.service}|${m.provider}|${m.model}`] ?? 0),
     lastSeenCell(m, now),
@@ -433,7 +441,7 @@ export function pricesSection(dash) {
     `<button class="link-btn" type="button" data-edit-price="${esc(JSON.stringify(p))}">تعديل</button>
      <button class="link-btn danger" type="button" data-del-price="${esc(p.provider)}" data-model="${esc(p.model)}">حذف</button>`,
   ]);
-  const chips = pricing.unpriced.map(unpricedChip).join(' ');
+  const chips = pricing.unpriced.filter((u) => !isLocalProvider(u.provider)).map(unpricedChip).join(' ');
   const unpriced = chips ? `<div class="notice">نماذج مستعملة بدون ثمن (تكلفتها محسوبة 0): ${chips}</div>` : '';
   return section('prices', 'الأثمنة', `${unpriced}
     ${table(['المزود', 'النموذج', { label: 'دخل/م', num: true }, { label: 'خرج/م', num: true }, { label: 'دقيقة صوت', num: true },
@@ -461,8 +469,8 @@ export function configSection(status, statusError = '') {
   }
   const ai = status.ai ?? { roles: [] };
   const rows = ai.roles.map((r) => [
-    esc(labelOf(ROLE_LABELS, r.role)), `<b>${esc(r.model)}</b>`, esc(r.provider), esc(r.host),
-    r.own ? 'خاص' : 'يرث الرئيسي', r.hasKey ? 'موجود' : '<span class="small-note">بدون مفتاح</span>', esc(capsText(r.caps)),
+    esc(labelOf(ROLE_LABELS, r.role)), `<b>${esc(r.model)}</b>`, providerText(r), esc(r.host),
+    r.own ? 'خاص' : 'يرث الرئيسي', keyText(r), esc(capsText(r.caps)),
   ]);
   const stt = sttText(ai.stt);
   const tts = ai.tts?.configured ? `${esc(ai.tts.model)} (${esc(ai.tts.provider)})` : 'غير مهيأ (ردود نصية فقط)';
@@ -472,7 +480,50 @@ export function configSection(status, statusError = '') {
     <dl class="kv"><dt>تحويل الصوت إلى نص</dt><dd>${stt}</dd><dt>الرد الصوتي</dt><dd>${tts}</dd><dt>PDF</dt><dd>${pdf}</dd>
       <dt>الإعادات / المهلة</dt><dd>${formatCount(ai.retries)} / ${formatMs(ai.timeoutMs)}</dd>
       <dt>التسجيل (telemetry)</dt><dd>${status.metrics === 'off' ? 'متوقف (AGENT_METRICS=off)' : 'مفعّل'}</dd>
-      <dt>آخر فحص</dt><dd>${esc(new Date(status.checkedAt).toLocaleString('fr-MA'))}</dd></dl>`, {
-    note: 'لا تُعرض المفاتيح أبداً؛ فقط هل هي موجودة.',
+      ${ollamaSettings(ai.ollama)}
+      <dt>آخر فحص</dt><dd>${esc(new Date(status.checkedAt).toLocaleString('fr-MA'))}</dd></dl>
+    ${ollamaServers(status.probes)}`, {
+    note: 'لا تُعرض المفاتيح ولا قيم الترويسات أبداً؛ فقط هل هي موجودة.',
   });
+}
+
+function providerText(r) {
+  return r.kind === 'ollama' ? `Ollama <span class="small-note">(API أصلي)</span>` : esc(r.provider);
+}
+
+function keyText(r) {
+  const key = r.hasKey ? 'موجود' : '<span class="small-note">بدون مفتاح</span>';
+  const headers = r.headerNames?.length ? `<div class="small-note">ترويسات: ${esc(r.headerNames.join('، '))}</div>` : '';
+  return key + headers;
+}
+
+function ollamaSettings(o) {
+  if (!o) return '';
+  const think = o.think === undefined ? 'افتراضي النموذج' : String(o.think);
+  return `<dt>Ollama</dt><dd>سياق ${formatCount(o.numCtx ?? 8192)} توكن · يبقى في الذاكرة ${esc(o.keepAlive ?? '30m')} · التفكير: ${esc(think)}</dd>`;
+}
+
+function loadedText(p) {
+  if (!p.loaded?.length) return 'لا شيء';
+  return p.loaded.map((l) => {
+    const gpu = l.gpuShare === null ? '' : ` · GPU ${formatPercent(l.gpuShare, 0)}`;
+    return esc(`${l.name} (${formatCount(l.sizeMb)} MB${gpu})`);
+  }).join('<br>');
+}
+
+function capabilityText(p) {
+  return Object.entries(p.capabilities ?? {})
+    .map(([model, caps]) => esc(`${model}: ${caps ? caps.join('، ') : 'غير محمّل'}`))
+    .join('<br>');
+}
+
+/** One row per Ollama server seen in the last live check. */
+function ollamaServers(probes = []) {
+  const servers = (probes ?? []).filter((p) => p.provider === 'ollama');
+  if (!servers.length) return '';
+  const rows = servers.map((p) => [
+    esc(p.host), p.ok ? pill('ok', 'متصل') : pill('down', labelOf(ERROR_LABELS, p.errorKind)),
+    esc(p.version ?? '—'), formatMs(p.latencyMs), loadedText(p), capabilityText(p),
+  ]);
+  return `<h3>خوادم Ollama</h3>${table(['الخادم', 'الحالة', 'الإصدار', 'الزمن', 'في الذاكرة', 'القدرات'], rows)}`;
 }

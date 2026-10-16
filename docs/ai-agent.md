@@ -15,6 +15,8 @@
   وكتتحقق من القيم بنفس `js/utils/validators.js` ديال التطبيق. النموذج كيدير غير 4 مهام بسيطة بجواب JSON
   (`tasks.ts`): تحديد الوثيقة، استخراج القيم، صياغة السؤال، وإعادة صياغة الوقائع بالعربية الإدارية.
   لهذا يخدم مع **أي نموذج**: Gemini المجاني، Llama على Groq، Qwen محلي على Ollama، Claude...
+- **نماذج محلية (Ollama)**: على نفس الجهاز، الشبكة المحلية، سيرفر خاص بـ GPU، أو ollama.com، عبر الـ API الأصلي
+  ديال Ollama. الإعداد، الربط بالشبكة والحماية: [`docs/ollama.md`](ollama.md).
 - **واجهة واحدة لكل المزودين**: صيغة OpenAI Chat Completions، عبر 3 متغيرات (`LLM_BASE_URL`, `LLM_API_KEY`,
   `LLM_MODEL`). انظر [`supabase/functions/.env.example`](../supabase/functions/.env.example).
 - **الموافقة أولاً**: ما كيتصيفط والو لأي مزود ذكاء اصطناعي قبل ما يوافق المستخدم. `/forget` كيمسح معلوماته.
