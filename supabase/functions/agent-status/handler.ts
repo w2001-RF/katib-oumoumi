@@ -4,8 +4,9 @@
 // OpenRouter credit, and Telegram's own view of the webhook (pending updates,
 // last delivery error). Admin only.
 
+import { capabilitiesFromShow, ollamaBase, showModel } from '../_shared/ai/ollama.ts';
 import { joinUrl } from '../_shared/ai/openaiCompatible.ts';
-import { describeAiConfig, type EnvReader, resolveEndpoint, ROLE_PREFIX } from '../_shared/ai/registry.ts';
+import { type ApiKind, describeAiConfig, type EnvReader, resolveEndpoint, ROLE_PREFIX } from '../_shared/ai/registry.ts';
 import { errorKindFor, hostOf, providerOf, redact } from '../_shared/metrics/classify.ts';
 
 export interface StatusConfig {
@@ -26,8 +27,8 @@ function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
 }
 
-function authHeaders(apiKey: string): Record<string, string> {
-  return apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
+function authHeaders(apiKey: string, extra: Record<string, string> = {}): Record<string, string> {
+  return apiKey ? { ...extra, Authorization: `Bearer ${apiKey}` } : { ...extra };
 }
 
 async function timed<T>(run: () => Promise<T>): Promise<{ value?: T; error?: string; latencyMs: number }> {
@@ -41,34 +42,44 @@ async function timed<T>(run: () => Promise<T>): Promise<{ value?: T; error?: str
 
 // --- AI endpoints ----------------------------------------------------------------
 
-interface Endpoint {
+export interface Endpoint {
+  kind: ApiKind;
   baseUrl: string;
   apiKey: string;
+  headers: Record<string, string>;
   models: Set<string>;
   roles: Set<string>;
+}
+
+interface Use {
+  role: string;
+  kind: ApiKind;
+  baseUrl?: string;
+  apiKey: string;
+  headers?: Record<string, string>;
+  model?: string;
 }
 
 // Every distinct server + key in use, with the models and roles it serves.
 export function endpointsInUse(env: EnvReader): Endpoint[] {
   const byKey = new Map<string, Endpoint>();
-  const add = (role: string, baseUrl: string | undefined, apiKey: string, model: string | undefined) => {
+  const add = ({ role, kind, baseUrl, apiKey, headers = {}, model }: Use) => {
     if (!baseUrl || !model) return;
-    const id = `${baseUrl}\n${apiKey}`;
-    const e = byKey.get(id) ?? { baseUrl, apiKey, models: new Set<string>(), roles: new Set<string>() };
+    const base = kind === 'ollama' ? ollamaBase(baseUrl) : baseUrl;
+    const id = `${kind}\n${base}\n${apiKey}`;
+    const e = byKey.get(id) ?? { kind, baseUrl: base, apiKey, headers, models: new Set<string>(), roles: new Set<string>() };
     e.models.add(model);
     e.roles.add(role);
     byKey.set(id, e);
   };
-  for (const [role, prefix] of Object.entries(ROLE_PREFIX)) {
+  const roles: [string, string][] = Object.entries(ROLE_PREFIX);
+  if (env('LLM_FALLBACK_MODEL')) roles.push(['fallback', 'LLM_FALLBACK_']);
+  for (const [role, prefix] of roles) {
     const r = resolveEndpoint(env, prefix);
-    if (r) add(role, r.baseUrl, r.apiKey, r.model);
+    if (r) add({ role, kind: r.kind, baseUrl: r.baseUrl, apiKey: r.apiKey, headers: r.headers, model: r.model });
   }
-  if (env('LLM_FALLBACK_MODEL')) {
-    const r = resolveEndpoint(env, 'LLM_FALLBACK_');
-    if (r) add('fallback', r.baseUrl, r.apiKey, r.model);
-  }
-  add('stt', env('STT_BASE_URL'), env('STT_API_KEY') ?? '', env('STT_MODEL'));
-  add('tts', env('TTS_BASE_URL'), env('TTS_API_KEY') ?? '', env('TTS_MODEL'));
+  add({ role: 'stt', kind: 'openai', baseUrl: env('STT_BASE_URL'), apiKey: env('STT_API_KEY') ?? '', model: env('STT_MODEL') });
+  add({ role: 'tts', kind: 'openai', baseUrl: env('TTS_BASE_URL'), apiKey: env('TTS_API_KEY') ?? '', model: env('TTS_MODEL') });
   return [...byKey.values()];
 }
 
@@ -79,9 +90,12 @@ function listed(ids: string[], model: string): boolean | null {
 }
 
 export async function probeEndpoint(e: Endpoint) {
-  const base = { provider: providerOf(e.baseUrl), host: hostOf(e.baseUrl), roles: [...e.roles], hasKey: !!e.apiKey };
+  if (e.kind === 'ollama') return await probeOllama(e);
+  const base = { kind: e.kind, provider: providerOf(e.baseUrl), host: hostOf(e.baseUrl), roles: [...e.roles], hasKey: !!e.apiKey };
   const r = await timed(async () => {
-    const res = await fetch(joinUrl(e.baseUrl, 'models'), { headers: authHeaders(e.apiKey), signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
+    const res = await fetch(joinUrl(e.baseUrl, 'models'), {
+      headers: authHeaders(e.apiKey, e.headers), signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+    });
     const text = await res.text();
     return { status: res.status, ok: res.ok, text };
   });
@@ -97,6 +111,56 @@ export async function probeEndpoint(e: Endpoint) {
   } catch { /* a server without a model list is still reachable */ }
   const models = Object.fromEntries([...e.models].map((m) => [m, listed(ids, m)]));
   return { ...base, ok: true, status, latencyMs: r.latencyMs, models };
+}
+
+async function ollamaGet(e: Endpoint, path: string) {
+  const res = await fetch(joinUrl(e.baseUrl, path), { headers: authHeaders(e.apiKey, e.headers), signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
+  if (!res.ok) throw new HttpError(res.status, redact((await res.text()).slice(0, 200)));
+  return await res.json();
+}
+
+class HttpError extends Error {
+  constructor(readonly status: number, detail: string) {
+    super(`HTTP ${status}: ${detail}`);
+  }
+}
+
+const MB = 1024 * 1024;
+
+// An Ollama server: version, whether each model is pulled, which models are
+// loaded in memory (and how much of them sits in GPU memory), and what each
+// configured model can do.
+export async function probeOllama(e: Endpoint) {
+  const base = { kind: e.kind, provider: 'ollama', host: hostOf(e.baseUrl), roles: [...e.roles], hasKey: !!e.apiKey };
+  const r = await timed(() => ollamaGet(e, 'api/tags'));
+  if (!r.value) {
+    const status = r.error?.startsWith('HTTP ') ? Number(r.error.slice(5, 8)) : null;
+    return { ...base, ok: false, status, errorKind: errorKindFor(status, r.error), error: r.error, latencyMs: r.latencyMs };
+  }
+  const pulled: string[] = (r.value.models ?? []).map((m: { name?: string; model?: string }) => String(m.name ?? m.model ?? ''));
+  const has = (model: string) => pulled.some((p) => p === model || p === `${model}:latest`);
+  const [version, ps, shows] = await Promise.all([
+    timed(() => ollamaGet(e, 'api/version')),
+    timed(() => ollamaGet(e, 'api/ps')),
+    Promise.all([...e.models].map(async (model) => {
+      const show = has(model) ? await timed(() => showModel({ baseUrl: e.baseUrl, model, apiKey: e.apiKey, headers: e.headers })) : null;
+      return [model, show?.value ? (show.value.capabilities ?? []) : null] as const;
+    })),
+  ]);
+  const loaded = (ps.value?.models ?? []).map((m: { name?: string; size?: number; size_vram?: number; expires_at?: string }) => ({
+    name: String(m.name ?? ''),
+    sizeMb: Math.round((m.size ?? 0) / MB),
+    gpuShare: m.size ? (m.size_vram ?? 0) / m.size : null,
+    expiresAt: m.expires_at ?? null,
+  }));
+  return {
+    ...base, ok: true, status: 200, latencyMs: r.latencyMs,
+    version: version.value?.version ?? null,
+    models: Object.fromEntries([...e.models].map((m) => [m, has(m)])),
+    capabilities: Object.fromEntries(shows.map(([m, caps]) => [m, caps])),
+    detected: Object.fromEntries(shows.map(([m, caps]) => [m, caps ? capabilitiesFromShow({ capabilities: caps }) : null])),
+    loaded,
+  };
 }
 
 // OpenRouter is the one common provider with a credit API.

@@ -20,6 +20,22 @@ export interface EndpointConfig {
   observe?: CallObserver;
   /** Which role this endpoint serves (main, vision, fast, fallback), for telemetry. */
   role?: string;
+  /** Extra HTTP headers on every call, e.g. Cloudflare Access tokens in front of a private server. */
+  headers?: Record<string, string>;
+  /** Provider name for telemetry and prices; derived from the base URL when absent. */
+  provider?: string;
+}
+
+/** What a request/reply hook pair produces and reads (see OllamaLLM). */
+export interface ApiRequest {
+  path: string;
+  body: Record<string, unknown>;
+}
+
+export interface ApiReply {
+  text: string | null;
+  inputTokens?: number;
+  outputTokens?: number;
 }
 
 const DEFAULT_RETRIES = 2;
@@ -54,12 +70,12 @@ function retryAfterMs(res: Response): number | undefined {
 // FallbackLLM then tries the next provider).
 // `onResponse` sees the raw response (status, rate-limit headers) before the body is read.
 export async function postJson(url: string, apiKey: string, body: unknown, timeoutMs: number,
-  onResponse?: (res: Response) => void): Promise<any> {
+  onResponse?: (res: Response) => void, extraHeaders: Record<string, string> = {}): Promise<any> {
   let res: Response;
   try {
     res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders(apiKey) },
+      headers: { 'Content-Type': 'application/json', ...extraHeaders, ...authHeaders(apiKey) },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(timeoutMs),
     });
@@ -87,18 +103,22 @@ function replyText(data: any): string | null {
   return null;
 }
 
+// Retries, structured output and telemetry live here once; an API dialect
+// only says how to build the request and read the reply (request/reply/
+// responseFormat), as OllamaLLM does for Ollama's native /api/chat.
+
 // One adapter for every provider that speaks the OpenAI Chat Completions
 // format: Google AI Studio, Groq, OpenRouter, Mistral, Together, Ollama,
 // vLLM, LM Studio, OpenAI, Anthropic's compatibility endpoint...
 export class OpenAICompatibleLLM implements LLM {
   readonly name: string;
   readonly caps: ModelCapabilities;
-  private readonly provider: string;
+  protected readonly provider: string;
 
-  constructor(private readonly cfg: EndpointConfig) {
+  constructor(protected readonly cfg: EndpointConfig) {
     this.name = cfg.model;
     this.caps = cfg.caps;
-    this.provider = providerOf(cfg.baseUrl);
+    this.provider = cfg.provider ?? providerOf(cfg.baseUrl);
   }
 
   // Free tiers answer 503 "high demand" / 429 often, and it passes within
@@ -121,7 +141,8 @@ export class OpenAICompatibleLLM implements LLM {
     }
   }
 
-  private async chatOnce(req: ChatRequest, responseFormat: unknown, attempt: number): Promise<string> {
+  /** The HTTP call for one chat request: OpenAI Chat Completions. */
+  protected request(req: ChatRequest, responseFormat: unknown): ApiRequest {
     const body: Record<string, unknown> = {
       model: this.cfg.model,
       messages: req.messages,
@@ -129,15 +150,25 @@ export class OpenAICompatibleLLM implements LLM {
     };
     if (req.maxTokens) body.max_tokens = req.maxTokens;
     if (responseFormat) body.response_format = responseFormat;
+    return { path: 'chat/completions', body };
+  }
+
+  /** Text and token usage of a reply. */
+  protected reply(data: any): ApiReply {
+    return { text: replyText(data), inputTokens: data?.usage?.prompt_tokens, outputTokens: data?.usage?.completion_tokens };
+  }
+
+  private async chatOnce(req: ChatRequest, responseFormat: unknown, attempt: number): Promise<string> {
+    const { path, body } = this.request(req, responseFormat);
     const started = Date.now();
     let res: Response | undefined;
     try {
-      const data = await postJson(joinUrl(this.cfg.baseUrl, 'chat/completions'), this.cfg.apiKey, body,
-        this.cfg.timeoutMs ?? 45000, (r) => (res = r));
-      const text = replyText(data);
-      if (text === null) throw new LLMError(`Empty reply from ${this.cfg.model}`, null, true);
-      this.report(req, attempt, started, res, { usage: data?.usage });
-      return text;
+      const data = await postJson(joinUrl(this.cfg.baseUrl, path), this.cfg.apiKey, body,
+        this.cfg.timeoutMs ?? 45000, (r) => (res = r), this.cfg.headers);
+      const reply = this.reply(data);
+      if (reply.text === null) throw new LLMError(`Empty reply from ${this.cfg.model}`, null, true);
+      this.report(req, attempt, started, res, { usage: reply });
+      return reply.text;
     } catch (e) {
       this.report(req, attempt, started, res, { error: e });
       throw e;
@@ -145,7 +176,7 @@ export class OpenAICompatibleLLM implements LLM {
   }
 
   private report(req: ChatRequest, attempt: number, started: number, res: Response | undefined,
-    outcome: { usage?: { prompt_tokens?: number; completion_tokens?: number }; error?: unknown }) {
+    outcome: { usage?: ApiReply; error?: unknown }) {
     const { error, usage } = outcome;
     // An empty reply comes with HTTP 200: report the status the server sent.
     const status = res?.status ?? (error instanceof LLMError ? error.status : null);
@@ -163,13 +194,13 @@ export class OpenAICompatibleLLM implements LLM {
       error: error ? redact(message) : undefined,
       latencyMs: Date.now() - started,
       attempt,
-      inputTokens: usage?.prompt_tokens,
-      outputTokens: usage?.completion_tokens,
+      inputTokens: usage?.inputTokens,
+      outputTokens: usage?.outputTokens,
       rateLimit: res ? readRateLimit(res.headers) : undefined,
     });
   }
 
-  private responseFormat(schema: JsonSchema, schemaName: string): unknown {
+  protected responseFormat(schema: JsonSchema, schemaName: string): unknown {
     if (this.caps.json === 'schema') return { type: 'json_schema', json_schema: { name: schemaName, schema, strict: false } };
     if (this.caps.json === 'object') return { type: 'json_object' };
     return undefined;

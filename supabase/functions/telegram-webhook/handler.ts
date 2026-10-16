@@ -16,6 +16,8 @@ export interface WebhookConfig {
   makeDeps: (channel: TelegramChannel, metrics?: TurnMetrics) => AgentDeps;
   /** One telemetry recorder per update (admin dashboard); absent = nothing recorded. */
   makeMetrics?: () => TurnMetrics;
+  /** Runs before the agent is built, e.g. reading what local models can do. Must not throw. */
+  prepare?: () => Promise<void>;
   /** Keeps background work alive after the response (EdgeRuntime.waitUntil); absent = wait inline. */
   waitUntil?: (work: Promise<unknown>) => void;
   /** For tests: replaces the real Telegram adapter. */
@@ -49,6 +51,7 @@ async function handleUpdate(update: unknown, config: WebhookConfig) {
   }
   if (!msg) return;
   try {
+    await config.prepare?.();
     await handleMessage({ ...config.makeDeps(channel, metrics), metrics }, { ...msg, receivedAt });
   } catch (e) {
     console.error('[telegram-webhook] update failed', e);

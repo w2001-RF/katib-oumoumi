@@ -7,11 +7,19 @@
 //   LLM_FALLBACK_BASE_URL / ..._API_KEY / ..._MODEL [/ ..._CAPS] used on 429/5xx (optional)
 //   STT_BASE_URL / STT_API_KEY / STT_MODEL [/ STT_LANGUAGE]      speech-to-text (optional)
 //   TTS_BASE_URL / TTS_API_KEY / TTS_MODEL / TTS_VOICE [/ TTS_FORMAT]  voice replies (optional)
+//
+// Each LLM role may also set <ROLE>PROVIDER (openai | ollama; automatic: Ollama
+// for port 11434 and ollama.com) and <ROLE>HEADERS (a JSON object of extra
+// HTTP headers). Ollama-wide: OLLAMA_NUM_CTX, OLLAMA_KEEP_ALIVE, OLLAMA_THINK.
 
 import { hostOf, providerOf } from '../metrics/classify.ts';
 import type { CallObserver } from '../metrics/types.ts';
 import { FallbackLLM } from './fallback.ts';
 import { capabilitiesFor } from './models.ts';
+import {
+  detectedCapabilities, detectOllamaCapabilities, looksLikeOllama, OLLAMA_TIMEOUT_MS, OllamaLLM, type OllamaOptions, parseThink,
+  type ShowTarget,
+} from './ollama.ts';
 import { OpenAICompatibleLLM } from './openaiCompatible.ts';
 import { LLMAudioSTT, OpenAICompatibleSTT, OpenAICompatibleTTS } from './speech.ts';
 import type { LLM, ModelCapabilities, SpeechToText, TextToSpeech } from './types.ts';
@@ -21,38 +29,110 @@ export type Role = 'main' | 'vision' | 'fast';
 
 const denoEnv: EnvReader = (name) => Deno.env.get(name);
 
+export type ApiKind = 'openai' | 'ollama';
+
 export interface ResolvedEndpoint {
+  kind: ApiKind;
   baseUrl: string;
   apiKey: string;
   model: string;
   caps: ModelCapabilities;
+  /** Extra HTTP headers (values are secrets: never shown). */
+  headers: Record<string, string>;
   /** True when the role has its own model or server (otherwise it uses the main one). */
   own: boolean;
+}
+
+/** `{"Name": "value"}` from <ROLE>HEADERS; invalid JSON is reported and ignored. */
+export function parseHeaders(raw: string | undefined): Record<string, string> {
+  if (!raw?.trim()) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('not an object');
+    return Object.fromEntries(Object.entries(parsed).map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v)]));
+  } catch (e) {
+    console.warn(`[ai] ignoring *_HEADERS: expected a JSON object (${(e as Error).message})`);
+    return {};
+  }
+}
+
+export function apiKindFor(declared: string | undefined, baseUrl: string): ApiKind {
+  const d = (declared ?? '').trim().toLowerCase();
+  if (d === 'ollama') return 'ollama';
+  if (d === 'openai' || d) return 'openai';
+  return looksLikeOllama(baseUrl) ? 'ollama' : 'openai';
 }
 
 export function resolveEndpoint(env: EnvReader, prefix: string): ResolvedEndpoint | null {
   const model = env(`${prefix}MODEL`) || env('LLM_MODEL');
   const baseUrl = env(`${prefix}BASE_URL`) || env('LLM_BASE_URL');
   if (!model || !baseUrl) return null;
-  // A role that names its own server must also bring its own key.
-  const apiKey = env(`${prefix}BASE_URL`) ? env(`${prefix}API_KEY`) ?? '' : env(`${prefix}API_KEY`) ?? env('LLM_API_KEY') ?? '';
-  const caps = capabilitiesFor(model, env(`${prefix}CAPS`) ?? (prefix === 'LLM_' ? undefined : env('LLM_CAPS')));
-  return { baseUrl, apiKey, model, caps, own: prefix === 'LLM_' || !!(env(`${prefix}MODEL`) || env(`${prefix}BASE_URL`)) };
+  // A role that names its own server brings its own key, headers and dialect;
+  // otherwise it inherits the main server's.
+  const ownServer = !!env(`${prefix}BASE_URL`);
+  const inherited = (name: string) => (ownServer ? env(`${prefix}${name}`) : env(`${prefix}${name}`) ?? env(`LLM_${name}`));
+  const kind = apiKindFor(inherited('PROVIDER'), baseUrl);
+  const declaredCaps = env(`${prefix}CAPS`) ?? (prefix === 'LLM_' ? undefined : env('LLM_CAPS'));
+  return {
+    kind,
+    baseUrl,
+    apiKey: inherited('API_KEY') ?? '',
+    model,
+    caps: capsFor(kind, baseUrl, model, declaredCaps),
+    headers: parseHeaders(inherited('HEADERS')),
+    own: prefix === 'LLM_' || !!(env(`${prefix}MODEL`) || ownServer),
+  };
+}
+
+// Declared (<ROLE>CAPS) > reported by the Ollama server > known model table.
+// Every Ollama model gets native JSON-schema output.
+function capsFor(kind: ApiKind, baseUrl: string, model: string, declared: string | undefined): ModelCapabilities {
+  if (declared?.trim()) return capabilitiesFor(model, declared);
+  const known = capabilitiesFor(model);
+  if (kind !== 'ollama') return known;
+  return { ...known, json: 'schema', audioInput: false, ...detectedCapabilities(baseUrl, model) };
+}
+
+export function ollamaOptions(env: EnvReader): OllamaOptions {
+  return {
+    numCtx: Number(env('OLLAMA_NUM_CTX')) || undefined,
+    keepAlive: env('OLLAMA_KEEP_ALIVE') || undefined,
+    think: parseThink(env('OLLAMA_THINK')),
+  };
 }
 
 function endpoint(env: EnvReader, prefix: string, role: string, observe?: CallObserver) {
   const e = resolveEndpoint(env, prefix);
   if (!e) return null;
-  return new OpenAICompatibleLLM({
+  const cfg = {
     baseUrl: e.baseUrl,
     apiKey: e.apiKey,
     model: e.model,
     caps: e.caps,
-    timeoutMs: Number(env('LLM_TIMEOUT_MS')) || 45000,
+    headers: e.headers,
+    timeoutMs: Number(env('LLM_TIMEOUT_MS')) || (e.kind === 'ollama' ? OLLAMA_TIMEOUT_MS : 45000),
     retries: env('LLM_RETRIES') === undefined ? undefined : Number(env('LLM_RETRIES')),
     observe,
     role,
-  });
+  };
+  return e.kind === 'ollama' ? new OllamaLLM(cfg, ollamaOptions(env)) : new OpenAICompatibleLLM(cfg);
+}
+
+/** Every Ollama model configured for a role (main, vision, fast, fallback). */
+export function ollamaTargets(env: EnvReader = denoEnv): ShowTarget[] {
+  const prefixes = [...Object.values(ROLE_PREFIX), ...(env('LLM_FALLBACK_MODEL') ? ['LLM_FALLBACK_'] : [])];
+  return prefixes
+    .map((p) => resolveEndpoint(env, p))
+    .filter((e): e is ResolvedEndpoint => e?.kind === 'ollama')
+    .map((e) => ({ baseUrl: e.baseUrl, model: e.model, apiKey: e.apiKey, headers: e.headers }));
+}
+
+/**
+ * Reads what each Ollama model can do (vision, tools) before the first message,
+ * so getLLM() routes images correctly without a CAPS variable. Cached; never throws.
+ */
+export function prepareModels(env: EnvReader = denoEnv): Promise<void> {
+  return detectOllamaCapabilities(ollamaTargets(env));
 }
 
 export const ROLE_PREFIX: Record<Role, string> = { main: 'LLM_', vision: 'LLM_VISION_', fast: 'LLM_FAST_' };
@@ -85,10 +165,13 @@ export function getTTS(env: EnvReader = denoEnv, observe?: CallObserver): TextTo
 
 export interface EndpointInfo {
   role: string;
+  kind: ApiKind;
   provider: string;
   host: string;
   model: string;
   hasKey: boolean;
+  /** Names of the extra headers; their values are never shown. */
+  headerNames: string[];
   own: boolean;
   caps: ModelCapabilities;
 }
@@ -99,12 +182,17 @@ export interface AiConfigInfo {
   tts: { configured: boolean; provider?: string; host?: string; model?: string; hasKey?: boolean };
   retries: number;
   timeoutMs: number;
+  /** Settings applied to every Ollama model, when one is configured. */
+  ollama: OllamaOptions | null;
 }
 
 function info(env: EnvReader, prefix: string, role: string): EndpointInfo | null {
   const e = resolveEndpoint(env, prefix);
   if (!e) return null;
-  return { role, provider: providerOf(e.baseUrl), host: hostOf(e.baseUrl), model: e.model, hasKey: !!e.apiKey, own: e.own, caps: e.caps };
+  return {
+    role, kind: e.kind, provider: e.kind === 'ollama' ? 'ollama' : providerOf(e.baseUrl), host: hostOf(e.baseUrl), model: e.model,
+    hasKey: !!e.apiKey, headerNames: Object.keys(e.headers), own: e.own, caps: e.caps,
+  };
 }
 
 function sttInfo(env: EnvReader, main: EndpointInfo | null): AiConfigInfo['stt'] {
@@ -120,13 +208,16 @@ export function describeAiConfig(env: EnvReader = denoEnv): AiConfigInfo {
   if (env('LLM_FALLBACK_MODEL')) roles.push(info(env, 'LLM_FALLBACK_', 'fallback'));
   const ttsModel = env('TTS_MODEL');
   const ttsUrl = env('TTS_BASE_URL');
+  const configured = roles.filter((r): r is EndpointInfo => !!r);
+  const anyOllama = configured.some((r) => r.kind === 'ollama');
   return {
-    roles: roles.filter((r): r is EndpointInfo => !!r),
+    roles: configured,
     stt: sttInfo(env, roles[0]),
     tts: ttsModel && ttsUrl
       ? { configured: true, provider: providerOf(ttsUrl), host: hostOf(ttsUrl), model: ttsModel, hasKey: !!env('TTS_API_KEY') }
       : { configured: false },
     retries: env('LLM_RETRIES') === undefined ? 2 : Number(env('LLM_RETRIES')),
-    timeoutMs: Number(env('LLM_TIMEOUT_MS')) || 45000,
+    timeoutMs: Number(env('LLM_TIMEOUT_MS')) || (configured[0]?.kind === 'ollama' ? OLLAMA_TIMEOUT_MS : 45000),
+    ollama: anyOllama ? ollamaOptions(env) : null,
   };
 }

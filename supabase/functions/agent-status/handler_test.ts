@@ -109,3 +109,36 @@ Deno.test('endpoints in use are grouped by server and key', () => {
     [['stt', 'tts'], ['whisper-large-v3', 'playai-tts']],
   ]);
 });
+
+Deno.test('agent-status: Ollama server — version, pulled models, memory, capabilities', async () => {
+  const lan = { LLM_BASE_URL: 'http://192.168.1.20:11434/v1', LLM_MODEL: 'qwen2.5:14b', LLM_VISION_MODEL: 'gemma3:12b',
+    LLM_HEADERS: '{"X-Lan":"SECRET-H"}' };
+  const ollama = (url: string, body?: unknown) => {
+    if (url.endsWith('/api/tags')) return jsonResponse({ models: [{ name: 'qwen2.5:14b' }, { name: 'llama3.2:latest' }] });
+    if (url.endsWith('/api/version')) return jsonResponse({ version: '0.12.6' });
+    if (url.endsWith('/api/ps')) return jsonResponse({ models: [{ name: 'qwen2.5:14b', size: 10 * 1024 * 1024 * 1024, size_vram: 5 * 1024 * 1024 * 1024, expires_at: '2026-10-16T12:30:00Z' }] });
+    if (url.endsWith('/api/show')) return jsonResponse({ capabilities: (body as { model: string }).model === 'qwen2.5:14b' ? ['completion', 'tools'] : [] });
+    return new Response('?', { status: 500 });
+  };
+  await withFetch((r) => ollama(r.url, r.json), async (reqs) => {
+    const body = await (await handler(lan)(post({ probe: true }))).json();
+    const p = body.probes[0];
+    assertEquals([p.provider, p.kind, p.host, p.ok, p.version], ['ollama', 'ollama', '192.168.1.20', true, '0.12.6']);
+    assertEquals(p.models, { 'qwen2.5:14b': true, 'gemma3:12b': false }, 'gemma3 still has to be pulled');
+    assertEquals(p.capabilities, { 'qwen2.5:14b': ['completion', 'tools'], 'gemma3:12b': null });
+    assertEquals(p.detected['qwen2.5:14b'], { vision: false, tools: true, json: 'schema', audioInput: false });
+    assertEquals(p.loaded, [{ name: 'qwen2.5:14b', sizeMb: 10240, gpuShare: 0.5, expiresAt: '2026-10-16T12:30:00Z' }]);
+    assertEquals(body.ai.roles[0].headerNames, ['X-Lan']);
+    assert(reqs.every((r) => !r.url.includes('/v1/')), 'native API, /v1 stripped');
+    assertEquals((reqs.find((r) => r.url.endsWith('/api/tags'))!.init.headers as Record<string, string>)['X-Lan'], 'SECRET-H');
+    assert(!JSON.stringify(body).includes('SECRET'));
+  });
+  await withFetch(() => new Response('unauthorized', { status: 401 }), async () => {
+    const p = (await (await handler(lan)(post({ probe: true }))).json()).probes[0];
+    assertEquals([p.ok, p.status, p.errorKind], [false, 401, 'auth'], 'a proxy refused the key');
+  });
+  await withFetch(() => Promise.reject(new TypeError('Connection refused')), async () => {
+    const p = (await (await handler(lan)(post({ probe: true }))).json()).probes[0];
+    assertEquals([p.ok, p.status, p.errorKind], [false, null, 'network']);
+  });
+});

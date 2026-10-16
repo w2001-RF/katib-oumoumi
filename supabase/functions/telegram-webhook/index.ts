@@ -7,7 +7,7 @@
 // Then register the webhook once (see docs/ai-agent.md).
 
 import { SupabaseAgentStore } from '../_shared/agent/store.ts';
-import { getLLM, getSTT, getTTS } from '../_shared/ai/registry.ts';
+import { getLLM, getSTT, getTTS, prepareModels } from '../_shared/ai/registry.ts';
 import { getRenderer } from '../_shared/docs/render.ts';
 import { MetricsRecorder, metricsSinkFromEnv } from '../_shared/metrics/recorder.ts';
 import { createWebhookHandler } from './handler.ts';
@@ -23,6 +23,8 @@ Deno.serve(
     token: Deno.env.get('TELEGRAM_BOT_TOKEN') ?? '',
     secret: Deno.env.get('TELEGRAM_WEBHOOK_SECRET') ?? '',
     makeMetrics: () => new MetricsRecorder(metricsSink),
+    // Ollama models: ask the server once whether they read images (cached).
+    prepare: () => prepareModels(),
     makeDeps: (channel, metrics) => ({
       store: new SupabaseAgentStore(),
       channel,

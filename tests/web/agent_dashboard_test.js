@@ -338,3 +338,37 @@ Deno.test('API: dashboard RPC, status function, prices and budgets', async () =>
     await assertRejects(fn);
   }
 });
+
+Deno.test('Ollama on the dashboard: local cost, pull hint, servers table', () => {
+  const dash = sampleDash({
+    models: [{ service: 'llm', provider: 'ollama', model: 'qwen2.5:14b', roles: ['main'], calls: 10, ok_calls: 10, priced: false, cost_usd: 0 }],
+    pricing: { prices: [], unpriced: [{ service: 'llm', provider: 'ollama', model: 'qwen2.5:14b' }, { service: 'llm', provider: 'groq', model: 'x' }] },
+  });
+  const probe = { provider: 'ollama', kind: 'ollama', host: '192.168.1.20', ok: true, latencyMs: 40, version: '0.12.6',
+    models: { 'qwen2.5:14b': true, 'gemma3:12b': false }, capabilities: { 'qwen2.5:14b': ['completion', 'tools'], 'gemma3:12b': null },
+    loaded: [{ name: 'qwen2.5:14b', sizeMb: 10240, gpuShare: 0.5 }, { name: 'tiny', sizeMb: 300, gpuShare: null }] };
+  const status = sampleStatus({
+    probes: [probe],
+    ai: { roles: [{ role: 'main', kind: 'ollama', provider: 'ollama', host: '192.168.1.20', model: 'qwen2.5:14b', hasKey: false,
+      headerNames: ['CF-Access-Client-Id'], own: true, caps: { json: 'schema', tools: true } }],
+      stt: { mode: 'none' }, tts: {}, retries: 2, timeoutMs: 120000, ollama: { numCtx: 16384, keepAlive: '-1', think: false } },
+  });
+  const models = s.modelsSection(dash, status, NOW);
+  assertStringIncludes(models, 'محلي');
+  assertStringIncludes(models, 'في الذاكرة');
+  const prices = s.pricesSection(dash);
+  assert(!prices.includes('ollama · qwen2.5'), 'local models are not "missing a price"');
+  assertStringIncludes(prices, 'groq · x');
+  const cfg = s.configSection(status);
+  for (const text of ['Ollama', 'CF-Access-Client-Id', '16,384', 'خوادم Ollama', '0.12.6', '10,240 MB · GPU 50%', 'tiny (300 MB)', 'غير محمّل']) {
+    assertStringIncludes(cfg, text);
+  }
+  assertStringIncludes(s.configSection(sampleStatus({ probes: [{ ...probe, ok: false, errorKind: 'network' }], ai: { ...status.ai, ollama: { } } })), 'افتراضي النموذج');
+  const notPulled = s.modelsSection({ models: [{ service: 'llm', provider: 'ollama', model: 'gemma3:12b', calls: 1, ok_calls: 0 }] }, status, NOW);
+  assertStringIncludes(notPulled, 'ollama pull');
+  const cold = s.modelsSection({ models: [{ service: 'llm', provider: 'ollama', model: 'qwen2.5:14b', calls: 1, ok_calls: 1 }] },
+    sampleStatus({ probes: [{ ...probe, loaded: [] }] }), NOW);
+  assertStringIncludes(cold, 'أول رد أبطأ');
+  const reasons = m.overallHealth(null, status, NOW).reasons.map((r) => r.text).join(' ');
+  assertStringIncludes(reasons, 'ollama pull gemma3:12b على 192.168.1.20');
+});

@@ -33,6 +33,9 @@ export const LEVEL_LABELS = { ok: 'يعمل بشكل طبيعي', degraded: 'أ�
 
 export const labelOf = (map, key) => map[key] ?? key ?? '—';
 
+/** Models served by Ollama run on your own hardware: no per-token price. */
+export const isLocalProvider = (provider) => provider === 'ollama';
+
 // --- formatting ------------------------------------------------------------------
 
 const isNum = (n) => typeof n === 'number' && Number.isFinite(n);
@@ -285,7 +288,9 @@ function probeReasons(status) {
   for (const p of status?.probes ?? []) {
     if (!p.ok) reasons.push(['degraded', `فحص ${p.provider} فشل: ${labelOf(ERROR_LABELS, p.errorKind)}`]);
     for (const [model, listedNow] of Object.entries(p.models ?? {})) {
-      if (listedNow === false) reasons.push(['degraded', `${model} غير موجود في لائحة نماذج ${p.provider}`]);
+      if (listedNow !== false) continue;
+      const fix = p.provider === 'ollama' ? `: نفّذ ollama pull ${model} على ${p.host}` : '';
+      reasons.push(['degraded', `${model} غير موجود في لائحة نماذج ${p.provider}${fix}`]);
     }
   }
   return reasons;
