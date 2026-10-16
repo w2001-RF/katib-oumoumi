@@ -7,7 +7,7 @@ export async function renderCategoryDetail(container, params) {
   container.innerHTML = `
     ${renderHeader({ title: '...', showBack: true })}
     <main class="app-main">
-      <div id="doctype-list">${loadingSpinner(true)}</div>
+      <div id="doctype-list" class="card-list">${loadingSpinner(true)}</div>
     </main>
     ${renderBottomNav('/categories')}
   `;

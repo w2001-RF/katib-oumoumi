@@ -1,0 +1,10 @@
+# كاتب عمومي — the whole site may be crawled.
+# Admin screens are hash routes (#/admin/...) behind a login: crawlers never see them.
+# Note: robots.txt only counts at the root of a domain (e.g. https://katib.ma/robots.txt),
+# like ads.txt (see docs/google-ads.md).
+User-agent: *
+Allow: /
+Disallow: /supabase/
+Disallow: /tests/
+Disallow: /eval/
+Disallow: /docs/

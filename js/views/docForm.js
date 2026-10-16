@@ -6,6 +6,7 @@ import { validateField, inputTypeFor, fieldOptions, hasOtherOption, OTHER_OPTION
 import { addHistoryEntry } from '../history.js';
 import { escapeHtml } from '../utils/format.js';
 import { enhanceSelects } from '../utils/searchableSelect.js';
+import { renderTemplate } from '../utils/templateEngine.js';
 
 // Value of a field's control; for a dropdown set to «أخرى», the typed text.
 function readFieldValue(wrap) {
@@ -75,14 +76,20 @@ export async function renderDocForm(container, params) {
   container.querySelector('h1').textContent = docType.name_ar;
   const main = container.querySelector('#form-main');
   main.innerHTML = `
-    <form id="doc-form" novalidate>
-      ${fields.map(fieldInputHtml).join('')}
-      <div class="form-footer">
-        <button type="submit" class="btn-primary" id="submit-btn">
-          ${icon('fileText')} توليد الوثيقة
-        </button>
-      </div>
-    </form>
+    <div class="form-layout">
+      <form id="doc-form" novalidate>
+        ${fields.map(fieldInputHtml).join('')}
+        <div class="form-footer">
+          <button type="submit" class="btn-primary" id="submit-btn">
+            ${icon('fileText')} توليد الوثيقة
+          </button>
+        </div>
+      </form>
+      <aside class="live-preview" aria-label="معاينة الوثيقة">
+        <div class="preview-cap">معاينة مباشرة</div>
+        <div class="doc-preview" id="live-doc"></div>
+      </aside>
+    </div>
   `;
 
   const form = main.querySelector('#doc-form');
@@ -96,6 +103,24 @@ export async function renderDocForm(container, params) {
     });
   });
   const submitBtn = main.querySelector('#submit-btn');
+
+  // Live preview: the letter fills in as the user types.
+  const liveDoc = main.querySelector('#live-doc');
+  const readValues = () => Object.fromEntries(fields.map((f) => [
+    f.field_key,
+    readFieldValue(form.querySelector(`[data-field="${CSS.escape(f.field_key)}"]`)),
+  ]));
+  const paintPreview = () => {
+    liveDoc.innerHTML = renderTemplate(docType.template_body, fields, readValues());
+  };
+  let previewTimer = null;
+  const schedulePreview = () => {
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(paintPreview, 120);
+  };
+  form.addEventListener('input', schedulePreview);
+  form.addEventListener('change', schedulePreview);
+  paintPreview();
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();

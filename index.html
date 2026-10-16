@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>كاتب عمومي — وثائقك الإدارية في دقيقة واحدة</title>
   <meta name="description" content="تطبيق ويب لتوليد الوثائق الإدارية المغربية (شكايات، توكيلات، عقود...) بصيغة Word وPDF." />
-  <meta name="theme-color" content="#16294a" />
+  <meta name="theme-color" content="#0f4c3a" />
+  <meta name="color-scheme" content="light dark" />
   <meta name="google-adsense-account" content="ca-pub-3344053538816400">
 
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
@@ -14,8 +15,19 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet" />
-  
+  <!-- Amiri: headings (naskh) · IBM Plex Sans Arabic: text · Tajawal: the document preview, as exported -->
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Tajawal:wght@400;700&display=swap" rel="stylesheet" />
+
+  <!-- Saved light/dark choice, applied before the first paint (js/theme.js). -->
+  <script>
+    try {
+      var t = localStorage.getItem('katib-theme');
+      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    } catch (e) {
+      console.warn('Saved theme not restored (storage blocked), following the system', e);
+    }
+  </script>
+
   <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>

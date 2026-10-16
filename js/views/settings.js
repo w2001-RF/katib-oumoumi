@@ -1,5 +1,12 @@
 import { icon } from '../utils/icons.js';
 import { renderHeader, renderBottomNav, showToast } from '../ui.js';
+import { applyTheme, readThemePref } from '../theme.js';
+
+const THEME_CHOICES = [
+  { value: 'auto', label: 'تلقائي', iconName: 'monitor' },
+  { value: 'light', label: 'فاتح', iconName: 'sun' },
+  { value: 'dark', label: 'داكن', iconName: 'moon' },
+];
 
 const APP_VERSION = 'v1.0.0';
 const CONTACT_EMAIL = 'contact@katiboumoumi.online';
@@ -7,7 +14,12 @@ const CONTACT_EMAIL = 'contact@katiboumoumi.online';
 export async function renderSettings(container) {
   container.innerHTML = `
     ${renderHeader({ title: 'الإعدادات' })}
-    <main class="app-main">
+    <main class="app-main narrow-page">
+      <div class="settings-group-title">المظهر</div>
+      <div class="theme-switch" role="radiogroup" aria-label="المظهر">
+        ${THEME_CHOICES.map((c) => `<button type="button" role="radio" data-theme-choice="${c.value}" aria-checked="false">${icon(c.iconName)} ${c.label}</button>`).join('')}
+      </div>
+
       <div class="settings-group-title">التطبيق</div>
       <div class="settings-row" id="about-row">
         <div class="icon-box">${icon('info')}</div>
@@ -53,6 +65,14 @@ export async function renderSettings(container) {
     </main>
     ${renderBottomNav('/settings')}
   `;
+
+  const themeButtons = [...container.querySelectorAll('[data-theme-choice]')];
+  const markTheme = (pref) => themeButtons.forEach((b) => b.setAttribute('aria-checked', String(b.dataset.themeChoice === pref)));
+  markTheme(readThemePref());
+  themeButtons.forEach((b) => b.addEventListener('click', () => {
+    applyTheme(b.dataset.themeChoice);
+    markTheme(b.dataset.themeChoice);
+  }));
 
   container.querySelector('#about-row').addEventListener('click', () => {
     showToast(`كاتب عمومي — ${APP_VERSION}\nتطبيق لتوليد الوثائق الإدارية المغربية`);

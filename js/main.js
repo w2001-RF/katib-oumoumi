@@ -12,6 +12,9 @@ import { renderAdminCategories } from './admin/adminCategories.js';
 import { renderAdminDocTypeEditor } from './admin/adminDocTypeEditor.js';
 import { renderAdminAgents } from './admin/adminAgents.js';
 import { supabaseReady } from './supabaseClient.js';
+import { bindThemeToggle } from './theme.js';
+
+bindThemeToggle();
 
 registerRoute('/', renderHome);
 registerRoute('/categories', renderCategories);
@@ -40,8 +43,8 @@ if (supabaseReady) {
 } else {
   app.innerHTML = `
     <div style="padding:40px 24px;text-align:center;font-family:sans-serif;direction:rtl;">
-      <h2 style="color:#16294a;">إعداد Supabase غير مكتمل</h2>
-      <p style="color:#555;line-height:1.8;">
+      <h2 style="color:var(--heading);">إعداد Supabase غير مكتمل</h2>
+      <p style="color:var(--text-dim);line-height:1.8;">
         لم يتم العثور على <code>supabase-config.js</code>. إذا كنت تُشغّل المشروع محلياً، انسخ
         <code>supabase-config.example.js</code> إلى <code>supabase-config.js</code> واملأ بيانات مشروعك.
         عند النشر عبر GitHub Actions يتم توليد هذا الملف تلقائياً من أسرار المستودع

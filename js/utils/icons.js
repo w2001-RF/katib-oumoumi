@@ -2,6 +2,9 @@
 // Keeping icons inline avoids an extra font/network dependency.
 
 const ICONS = {
+  moon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>',
+  sun: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  monitor: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>',
   search: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
   home: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>',
   grid: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
@@ -46,16 +49,11 @@ export function icon(name, extraClass) {
   return svg;
 }
 
-export const CATEGORY_ICON_COLORS = [
-  { bg: '#fdecec', fg: '#d64545' },
-  { bg: '#e9f3ff', fg: '#2f6fb0' },
-  { bg: '#f2ecfb', fg: '#7c4fc9' },
-  { bg: '#e8f8f0', fg: '#1f9254' },
-  { bg: '#fff3e0', fg: '#b8873b' },
-  { bg: '#e8f0ff', fg: '#3454ad' },
-  { bg: '#eafaf1', fg: '#1f9254' },
-  { bg: '#fdf1e7', fg: '#c17a2b' },
-  { bg: '#ecf1fb', fg: '#2f4d8a' },
-];
+// Category icon tones from the charte; their light and dark colours are CSS
+// variables in css/styles.css.
+export const CATEGORY_ICON_COLORS = [1, 2, 3, 4, 5, 6].map((n) => ({
+  bg: `var(--tone-${n}-bg)`,
+  fg: `var(--tone-${n}-fg)`,
+}));
 
 export default icon;

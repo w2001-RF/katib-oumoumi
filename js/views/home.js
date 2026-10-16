@@ -5,7 +5,7 @@ import { fetchMostRequested, searchDocumentTypes } from '../api.js';
 
 export async function renderHome(container) {
   container.innerHTML = `
-    ${renderHeader({ title: 'كاتب عمومي', showSearch: true })}
+    ${renderHeader({ title: 'كاتب عمومي', showSearch: true, brand: true })}
     <main class="app-main" id="home-main">
       <div class="search-bar" id="search-bar" style="display:none;">
         <input type="text" id="search-input" placeholder="ابحث عن وثيقة..." />
@@ -16,7 +16,7 @@ export async function renderHome(container) {
         <button class="btn-gold" id="browse-btn">${icon('grid3')} تصفح التصنيفات</button>
       </div>
       <div class="section-title">الأكثر طلباً</div>
-      <div id="most-requested-list">${loadingSpinner(true)}</div>
+      <div id="most-requested-list" class="card-list">${loadingSpinner(true)}</div>
     </main>
     ${renderBottomNav('/')}
   `;

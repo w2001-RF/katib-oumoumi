@@ -10,7 +10,7 @@ import { navigate } from '../router.js';
 export async function renderHistory(container) {
   container.innerHTML = `
     ${renderHeader({ title: 'سجل الوثائق' })}
-    <main class="app-main" id="history-main"></main>
+    <main class="app-main card-list" id="history-main"></main>
     ${renderBottomNav('/history')}
   `;
   attachHeaderBack(container, '/');
