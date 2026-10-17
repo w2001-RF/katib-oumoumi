@@ -71,6 +71,12 @@
   <script src="supabase-config.js"></script>
 
   <script type="module" src="js/main.js"></script>
+  <!-- AdSense (Auto ads). No integrity attribute, on purpose (Sonar S5725 reviewed):
+       Google serves this file unversioned and changes it continuously without
+       publishing hashes, so an SRI hash would soon block every ad. Accepted risk:
+       HTTPS from Google's own domain, whose content Google controls anyway.
+       Note: unlike the rewarded ad (js/utils/ads.js), this tag loads Google's ad
+       code on every visit. -->
   <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3344053538816400"
      crossorigin="anonymous"></script>
 </body>

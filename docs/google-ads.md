@@ -23,6 +23,12 @@ Manager (Ad Manager for small businesses is free).
 
 A citizen is never blocked from their document because of an ad.
 
+> **AdSense Auto ads.** `index.html` also loads AdSense's `adsbygoogle.js` on every visit (Auto ads). That
+> tag is separate from the rewarded ad above: with it, Google's ad code and cookies are present from the first
+> page view, not only after the tap. It has no `integrity` attribute on purpose: Google changes the file
+> continuously without publishing hashes, so an SRI hash would block the ads (SonarQube hotspot S5725, reviewed
+> as safe). Remove the tag to go back to ads that load only on demand.
+
 ## Setup
 
 1. **Ad Manager**: create a network, then an **ad unit** (e.g. `katib_rewarded`) and a line item or campaign
