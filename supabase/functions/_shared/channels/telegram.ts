@@ -97,6 +97,11 @@ export class TelegramChannel implements Channel {
     await this.call('sendChatAction', { chat_id: chatId, action: kind }).catch(() => {});
   }
 
+  /** The command menu shown by Telegram next to the input box (set_commands.ts). */
+  async setMyCommands(commands: { command: string; description: string }[], languageCode?: string) {
+    await this.call('setMyCommands', { commands, ...(languageCode ? { language_code: languageCode } : {}) });
+  }
+
   async answerCallback(callbackId: string) {
     await this.call('answerCallbackQuery', { callback_query_id: callbackId }).catch(() => {});
   }

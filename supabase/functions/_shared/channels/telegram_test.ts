@@ -93,3 +93,14 @@ Deno.test('downloads refuse big files and failed transfers', async () => {
     await assertRejects(() => tg.download('gone'), Error, '404');
   });
 });
+
+Deno.test('setMyCommands: the command menu, optionally per language', async () => {
+  await withFetch(() => okResult(), async (reqs) => {
+    const commands = [{ command: 'help', description: 'المساعدة' }];
+    await tg.setMyCommands(commands);
+    await tg.setMyCommands(commands, 'ar');
+    assertEquals(reqs.map((r) => method(r.url)), ['setMyCommands', 'setMyCommands']);
+    assertEquals(reqs[0].json, { commands });
+    assertEquals(reqs[1].json, { commands, language_code: 'ar' });
+  });
+});

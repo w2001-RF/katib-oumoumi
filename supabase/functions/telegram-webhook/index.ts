@@ -32,6 +32,8 @@ Deno.serve(
       stt: getSTT(undefined, metrics?.observe),
       tts: getTTS(undefined, metrics?.observe),
       renderer: getRenderer(metrics?.observe),
+      // Used when the admin has not set one in the dashboard (agent_settings).
+      systemPrompt: Deno.env.get('BOT_SYSTEM_PROMPT') ?? '',
     }),
     waitUntil: edgeRuntime ? (work) => edgeRuntime.waitUntil(work) : undefined,
   }),

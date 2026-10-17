@@ -7,12 +7,16 @@ import { renderHeader, loadingSpinner, showToast } from '../ui.js';
 import { navigate } from '../router.js';
 import { requireAdmin } from './adminGuard.js';
 import {
-  adminAgentDashboard, adminAgentStatus, adminDeleteModelPrice, adminSaveModelPrice, adminSaveProviderBudget,
+  adminAgentDashboard, adminAgentStatus, adminDeleteModelPrice, adminGetAgentSetting, adminSaveAgentSetting, adminSaveModelPrice,
+  adminSaveProviderBudget,
 } from '../api.js';
-import { budgetFromForm, channelRows, loadErrorMessage, overallHealth, priceFromForm, RANGES, rangeFor } from './agentMetrics.js';
 import {
-  activitySection, budgetsSection, channelsSection, configSection, conversationsSection, failuresSection, healthBanner,
-  kpiGrid, modelsSection, priceForm, pricesSection, reliabilitySection, usageSection,
+  budgetFromForm, channelRows, loadErrorMessage, overallHealth, priceFromForm, RANGES, rangeFor, settingsLoadError,
+  SYSTEM_PROMPT_MAX, systemPromptFromForm,
+} from './agentMetrics.js';
+import {
+  activitySection, botSettingsSection, budgetsSection, channelsSection, configSection, conversationsSection, failuresSection,
+  healthBanner, kpiGrid, modelsSection, priceForm, pricesSection, reliabilitySection, usageSection,
 } from './agentSections.js';
 
 const REFRESH_MS = 60_000;
@@ -51,9 +55,12 @@ async function agentsView(container) {
         <button type="button" class="btn-outline" id="probe-btn">${icon('checkCircle')} فحص مباشر</button>
       </div>
       <div id="dash-body">${loadingSpinner(true)}</div>
+      <div id="bot-settings"></div>
     </main>`;
 
   const body = container.querySelector('#dash-body');
+  // Outside #dash-body, which is redrawn every minute: a prompt being typed is kept.
+  const settingsSlot = container.querySelector('#bot-settings');
   const probeBtn = container.querySelector('#probe-btn');
 
   function markRange() {
@@ -108,12 +115,25 @@ async function agentsView(container) {
     }
   }
 
+  async function loadSettings() {
+    try {
+      settingsSlot.innerHTML = botSettingsSection({ systemPrompt: await adminGetAgentSetting('system_prompt') }, SYSTEM_PROMPT_MAX);
+    } catch (e) {
+      settingsSlot.innerHTML = botSettingsSection({ error: settingsLoadError(e) }, SYSTEM_PROMPT_MAX);
+    }
+  }
+
   async function onSubmit(e) {
     const form = e.target.closest('form[data-form]');
     if (!form) return;
     e.preventDefault();
     const values = Object.fromEntries(new FormData(form).entries());
     try {
+      if (form.dataset.form === 'system-prompt') {
+        await adminSaveAgentSetting('system_prompt', systemPromptFromForm(values));
+        showToast('تم حفظ التعليمات، تُطبَّق خلال دقيقة');
+        return;
+      }
       if (form.dataset.form === 'price') await adminSaveModelPrice(priceFromForm(values));
       else await adminSaveProviderBudget(budgetFromForm(values));
       showToast('تم الحفظ');
@@ -164,7 +184,7 @@ async function agentsView(container) {
   container.addEventListener('submit', onSubmit);
 
   markRange();
-  await load({ withStatus: true });
+  await Promise.all([load({ withStatus: true }), loadSettings()]);
   const timer = setInterval(() => {
     if (!document.hidden) load();
   }, REFRESH_MS);

@@ -1,6 +1,8 @@
 // Shapes shared by the agent modules. Field and document rows are the ones the
 // web app already reads (v_template_fields, document_types).
 
+import type { HistoryEntry } from './memory.ts';
+
 export interface TemplateField {
   field_id: string;
   field_key: string;
@@ -52,6 +54,8 @@ export interface Conversation {
   field_summaries: Record<string, string>;
   skipped_keys: string[];
   asked_keys: string[];
+  /** Last few exchanges, shown to the model as context (memory.ts; migration 004). */
+  history?: HistoryEntry[];
 }
 
 export interface IncomingMessage {

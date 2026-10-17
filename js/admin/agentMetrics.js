@@ -353,6 +353,23 @@ export function priceFromForm(f) {
   return row;
 }
 
+/** Same limit as the agent_settings check constraint (migration 004). */
+export const SYSTEM_PROMPT_MAX = 4000;
+
+/** The system prompt from the form, trimmed; throws a message in Arabic when too long. */
+export function systemPromptFromForm(f) {
+  const value = String(f.system_prompt ?? '').replaceAll('\r\n', '\n').trim();
+  if (value.length > SYSTEM_PROMPT_MAX) throw new Error(`التعليمات طويلة جداً (${value.length} / ${SYSTEM_PROMPT_MAX} حرف)`);
+  return value;
+}
+
+/** Why the bot settings could not be read, in Arabic. */
+export function settingsLoadError(e) {
+  const text = `${e?.code ?? ''} ${e?.message ?? e ?? ''}`;
+  if (/agent_settings|does not exist|PGRST205|42P01/i.test(text)) return 'جدول إعدادات البوت غير موجود بعد';
+  return loadErrorMessage(e);
+}
+
 /** A budget row from the form; throws a message in Arabic when invalid. */
 export function budgetFromForm(f) {
   const provider = String(f.provider ?? '').trim().toLowerCase();
