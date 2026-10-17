@@ -372,3 +372,33 @@ Deno.test('Ollama on the dashboard: local cost, pull hint, servers table', () =>
   const reasons = m.overallHealth(null, status, NOW).reasons.map((r) => r.text).join(' ');
   assertStringIncludes(reasons, 'ollama pull gemma3:12b على 192.168.1.20');
 });
+
+Deno.test('bot settings: API, form parsing, errors and section', async () => {
+  db.reset((call) => (kind(call) === 'select' ? { data: [{ value: 'كن لطيفاً' }], error: null } : { data: null, error: null }));
+  assertEquals(await api.adminGetAgentSetting('system_prompt'), 'كن لطيفاً');
+  assertEquals([db.calls.at(-1).table, argsOf(db.calls.at(-1), 'eq')], ['agent_settings', ['key', 'system_prompt']]);
+  await api.adminSaveAgentSetting('system_prompt', 'جديد');
+  const [row, opts] = argsOf(db.calls.at(-1), 'upsert');
+  assertEquals([row.key, row.value, opts], ['system_prompt', 'جديد', { onConflict: 'key' }]);
+  db.reset(() => ({ data: [], error: null }));
+  assertEquals(await api.adminGetAgentSetting('system_prompt'), '', 'unset');
+  db.reset(() => ({ data: null, error: { message: 'boom' } }));
+  await assertRejects(() => api.adminGetAgentSetting('system_prompt'));
+  await assertRejects(() => api.adminSaveAgentSetting('system_prompt', 'x'));
+
+  assertEquals(m.systemPromptFromForm({ system_prompt: '  سطر\r\nثاني  ' }), 'سطر\nثاني');
+  assertEquals(m.systemPromptFromForm({}), '');
+  assertThrows(() => m.systemPromptFromForm({ system_prompt: 'x'.repeat(m.SYSTEM_PROMPT_MAX + 1) }), Error, 'طويلة');
+
+  assertEquals(m.settingsLoadError({ code: '42P01', message: 'relation "agent_settings" does not exist' }), 'جدول إعدادات البوت غير موجود بعد');
+  assertStringIncludes(m.settingsLoadError({ message: 'permission denied' }), 'للمسؤول');
+
+  const html = s.botSettingsSection({ systemPrompt: '<b>سيدي</b>' }, 4000);
+  assertStringIncludes(html, 'data-form="system-prompt"');
+  assertStringIncludes(html, '&lt;b&gt;سيدي&lt;/b&gt;', 'the saved text is escaped');
+  assertStringIncludes(html, 'maxlength="4000"');
+  const missing = s.botSettingsSection({ error: 'جدول إعدادات البوت غير موجود بعد' });
+  assertStringIncludes(missing, '004_agent_memory_settings.sql');
+  assert(!missing.includes('<textarea'));
+  assertStringIncludes(s.botSettingsSection(), '<textarea');
+});

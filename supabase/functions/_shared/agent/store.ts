@@ -23,13 +23,21 @@ export interface AgentStore {
   getProfile(userId: string): Promise<Record<string, string>>;
   saveProfile(userId: string, data: Record<string, string>): Promise<void>;
   listCatalog(): Promise<CatalogEntry[]>;
+  /** An admin-edited bot setting (agent_settings), '' when unset or unreadable. */
+  getSetting(key: string): Promise<string>;
   getDocument(id: string): Promise<AgentDocument | null>;
   logGenerated(documentTypeId: string, sessionId: string, values: Record<string, string>): Promise<void>;
 }
 
 const ACTIVE_STATUSES = ['choosing', 'collecting', 'confirming'];
-const CONVERSATION_TTL_MS = 24 * 60 * 60 * 1000;
-const CONV_COLUMNS = 'id, user_id, status, document_type_id, candidate_ids, field_values, field_summaries, skipped_keys, asked_keys';
+const DAY_MS = 24 * 60 * 60 * 1000;
+const CONVERSATION_TTL_MS = DAY_MS;
+/** Conversations (and their history) older than this are deleted (migration 004). */
+export const CONVERSATION_RETENTION_DAYS = 30;
+/** Settings change rarely: read them at most once a minute per function instance. */
+export const SETTINGS_CACHE_MS = 60_000;
+const CONV_COLUMNS =
+  'id, user_id, status, document_type_id, candidate_ids, field_values, field_summaries, skipped_keys, asked_keys, history';
 
 function check<T>(res: { data: T; error: { message: string } | null }): NonNullable<T> {
   if (res.error) throw new Error(res.error.message);
@@ -38,6 +46,9 @@ function check<T>(res: { data: T; error: { message: string } | null }): NonNulla
 
 export class SupabaseAgentStore implements AgentStore {
   private readonly db: SupabaseClient;
+  private readonly settings = new Map<string, { value: string; at: number }>();
+  /** Injectable clock, for tests. */
+  now: () => number = Date.now;
 
   /** `client` is for tests; by default it connects with the function's service role key. */
   constructor(client?: SupabaseClient) {
@@ -97,7 +108,17 @@ export class SupabaseAgentStore implements AgentStore {
   }
 
   async createConversation(userId: string): Promise<Conversation> {
+    await this.pruneConversations(userId);
     return check(await this.db.from('agent_conversations').insert({ user_id: userId }).select(CONV_COLUMNS).single()) as Conversation;
+  }
+
+  // Retention: when a user starts a new conversation, their conversations
+  // older than CONVERSATION_RETENTION_DAYS go (with their history). Best
+  // effort; agent_purge_conversations() does the same for everyone.
+  private async pruneConversations(userId: string) {
+    const cutoff = new Date(this.now() - CONVERSATION_RETENTION_DAYS * DAY_MS).toISOString();
+    const { error } = await this.db.from('agent_conversations').delete().eq('user_id', userId).lt('updated_at', cutoff);
+    if (error) console.warn('[agent] could not prune old conversations', error.message);
   }
 
   async saveConversation(conv: Conversation) {
@@ -109,6 +130,7 @@ export class SupabaseAgentStore implements AgentStore {
       field_summaries: conv.field_summaries,
       skipped_keys: conv.skipped_keys,
       asked_keys: conv.asked_keys,
+      history: conv.history ?? [],
       updated_at: new Date().toISOString(),
     };
     check(await this.db.from('agent_conversations').update(changes).eq('id', conv.id));
@@ -150,6 +172,19 @@ export class SupabaseAgentStore implements AgentStore {
     ]);
     const keywords = new Map(check(hints).map((h) => [h.document_type_id as string, h.keywords as string]));
     return check(docs).map((d) => ({ ...(d as Omit<CatalogEntry, 'keywords'>), keywords: keywords.get(d.id) ?? '' }));
+  }
+
+  async getSetting(key: string): Promise<string> {
+    const cached = this.settings.get(key);
+    if (cached && this.now() - cached.at < SETTINGS_CACHE_MS) return cached.value;
+    const { data, error } = await this.db.from('agent_settings').select('value').eq('key', key).limit(1);
+    if (error) {
+      console.warn(`[agent] could not read setting ${key}`, error.message);
+      return cached?.value ?? '';
+    }
+    const value = String((data as { value?: string }[] | null)?.[0]?.value ?? '');
+    this.settings.set(key, { value, at: this.now() });
+    return value;
   }
 
   async getDocument(id: string): Promise<AgentDocument | null> {

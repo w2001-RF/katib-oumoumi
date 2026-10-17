@@ -2,7 +2,7 @@ import '../support/setup.js';
 import { assertEquals, assertRejects } from 'jsr:@std/assert@1';
 import { argsOf, kind, sharedClient as db } from '../support/fakeSupabase.js';
 import * as api from '../../js/api.js';
-import { supabaseReady } from '../../js/supabaseClient.js';
+import { connectSupabase, supabaseReady } from '../../js/supabaseClient.js';
 
 const ok = (data) => ({ data, error: null });
 const fail = (message) => ({ data: null, error: { message } });
@@ -229,4 +229,18 @@ Deno.test('adminReplaceFields: no fields removes every link; database errors pro
         { field_key: 'المدينة', label_ar: 'المدينة', field_type: 'select', options: ['x'], option_list_id: 'L1' },
       ]));
   }
+});
+
+Deno.test('connectSupabase: a client only when the config is complete', () => {
+  const errors = [];
+  const log = { error: (m) => errors.push(m) };
+  const create = (url, key) => ({ url, key });
+  assertEquals(connectSupabase({ url: 'https://x.supabase.co', anonKey: 'k' }, { create, log }), {
+    ready: true,
+    client: { url: 'https://x.supabase.co', key: 'k' },
+  });
+  for (const config of [undefined, {}, { url: 'https://x.supabase.co' }, { anonKey: 'k' }]) {
+    assertEquals(connectSupabase(config, { create, log }), { ready: false, client: null });
+  }
+  assertEquals(errors.length, 4, 'each missing config is reported');
 });

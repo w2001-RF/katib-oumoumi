@@ -31,13 +31,15 @@ await db.exec(SUPABASE_STUBS);
 await db.exec((await read('schema.sql')).replace('create extension if not exists "pgcrypto";', ''));
 await db.exec(await read('templates.sql'));
 // 001 upgrades the pre-normalization schema; schema.sql is already normalized.
-for (const m of ['002_ai_agent.sql', '003_agent_dashboard.sql']) {
+for (const m of ['002_ai_agent.sql', '003_agent_dashboard.sql', '004_agent_memory_settings.sql']) {
   await db.exec(await read(`migrations/${m}`));
   console.log(`ok  applied ${m}`);
 }
 // Additive and idempotent: running 003 again changes nothing and does not fail.
 await db.exec(await read('migrations/003_agent_dashboard.sql'));
 assert(true, '003 can be applied twice');
+await db.exec(await read('migrations/004_agent_memory_settings.sql'));
+assert(true, '004 can be applied twice');
 
 // --- sample telemetry ---------------------------------------------------------
 await db.exec(`
@@ -162,5 +164,37 @@ assert(typeof bad === 'string' && bad.includes('invalid range'), 'reversed range
 
 const pruned = (await db.query<{ n: number }>(`select agent_prune_metrics(interval '30 minutes') as n`)).rows[0].n;
 assert(pruned > 0, `pruning removes old rows (${pruned})`);
+
+// --- 004: memory, settings, retention ------------------------------------------
+await db.exec(`
+  insert into agent_conversations (id, user_id, status, updated_at, history) values
+    ('00000000-0000-0000-0000-0000000a0001', '00000000-0000-0000-0000-000000000001', 'done', now() - interval '40 days', '[{"role":"user","text":"x"}]'),
+    ('00000000-0000-0000-0000-0000000a0002', '00000000-0000-0000-0000-000000000001', 'collecting', now(), default);
+`);
+const fresh = (await db.query<{ h: unknown }>(`select history as h from agent_conversations where id = '00000000-0000-0000-0000-0000000a0002'`)).rows[0].h;
+assert(Array.isArray(fresh) && fresh.length === 0, 'history defaults to an empty list');
+const prompt = (await db.query<{ value: string }>(`select value from agent_settings where key = 'system_prompt'`)).rows[0];
+assert(prompt?.value === '', 'system_prompt setting seeded empty');
+const tooLong = await db.query(`update agent_settings set value = repeat('x', 4001) where key = 'system_prompt'`).catch((e) => (e as Error).message);
+assert(typeof tooLong === 'string' && tooLong.includes('check'), 'settings are limited to 4000 characters');
+await db.exec(`set role anon`);
+const anonSettings = await db.query<{ n: number }>(`select count(*)::int as n from agent_settings`).catch((e) => ({ error: (e as Error).message }));
+await db.exec('reset role');
+assert('error' in anonSettings || anonSettings.rows[0].n === 0, 'anon cannot read the settings');
+const purgeDenied = await (async () => {
+  await db.exec(`set role authenticated`);
+  try {
+    await db.query(`select agent_purge_conversations(30)`);
+    return null;
+  } catch (e) {
+    return (e as Error).message;
+  } finally {
+    await db.exec('reset role');
+  }
+})();
+assert(purgeDenied?.includes('permission denied'), 'purge is not callable from the browser');
+const purged = (await db.query<{ n: number }>(`select agent_purge_conversations(30) as n`)).rows[0].n;
+const kept = (await db.query<{ id: string }>(`select id from agent_conversations where id::text like '%0000000a000%'`)).rows.map((r) => r.id);
+assert(purged >= 1 && kept.length === 1 && kept[0].endsWith('0000000a0002'), `purge removes only conversations older than 30 days (${purged} removed)`);
 
 console.log('\nAll SQL checks passed.');

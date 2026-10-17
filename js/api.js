@@ -449,6 +449,22 @@ export async function adminDeleteModelPrice(provider, model) {
   if (error) throw error;
 }
 
+/** An admin-edited bot setting (agent_settings, migration 004), '' when unset. */
+export async function adminGetAgentSetting(key) {
+  assertClient();
+  const { data, error } = await supabase.from('agent_settings').select('value').eq('key', key).limit(1);
+  if (error) throw error;
+  return data?.[0]?.value ?? '';
+}
+
+export async function adminSaveAgentSetting(key, value) {
+  assertClient();
+  const { error } = await supabase
+    .from('agent_settings')
+    .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+  if (error) throw error;
+}
+
 export async function adminSaveProviderBudget(row) {
   assertClient();
   const { error } = await supabase

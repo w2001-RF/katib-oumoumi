@@ -125,3 +125,45 @@ Deno.test('database errors are raised', async () => {
   const { store } = storeWith(() => ({ data: null, error: { message: 'permission denied' } }));
   await assertRejects(() => store.getProfile('u1'), Error, 'permission denied');
 });
+
+Deno.test('memory: history is saved; a new conversation prunes the user\'s old ones first', async () => {
+  const conv: Conversation = { id: 'c1', user_id: 'u1', status: 'collecting', document_type_id: 'd', candidate_ids: [], field_values: {},
+    field_summaries: {}, skipped_keys: [], asked_keys: [], history: [{ role: 'user', text: 'سلام' }] };
+  const { db, store } = storeWith((call) => (kind(call) === 'insert' ? ok(conv) : ok(null)));
+  store.now = () => Date.parse('2026-10-17T00:00:00Z');
+  await store.createConversation('u1');
+  assertEquals(db.calls.map((c: Call) => `${kind(c)}:${c.table}`), ['delete:agent_conversations', 'insert:agent_conversations']);
+  assertEquals(argsOf(db.calls[0], 'eq'), ['user_id', 'u1']);
+  assertEquals(argsOf(db.calls[0], 'lt'), ['updated_at', '2026-09-17T00:00:00.000Z'], '30 days of retention');
+  await store.saveConversation(conv);
+  assertEquals(argsOf(db.calls.at(-1), 'update')[0].history, [{ role: 'user', text: 'سلام' }]);
+  await store.saveConversation({ ...conv, history: undefined });
+  assertEquals(argsOf(db.calls.at(-1), 'update')[0].history, [], 'rows written before migration 004 get an empty history');
+
+  // A failing prune (e.g. a transient error) does not block the conversation.
+  db.reset((call: Call) => (kind(call) === 'delete' ? { data: null, error: { message: 'timeout' } } : ok(conv)));
+  assertEquals((await store.createConversation('u1')).id, 'c1');
+});
+
+Deno.test('settings: read once a minute, kept on errors', async () => {
+  let rows: unknown[] = [{ value: 'كن لطيفاً' }];
+  let fail = false;
+  const { db, store } = storeWith(() => (fail ? { data: null, error: { message: 'down' } } : ok(rows)));
+  let now = 0;
+  store.now = () => now;
+  assertEquals(await store.getSetting('system_prompt'), 'كن لطيفاً');
+  assertEquals(argsOf(db.calls[0], 'eq'), ['key', 'system_prompt']);
+  rows = [{ value: 'جديد' }];
+  now = 30_000;
+  assertEquals(await store.getSetting('system_prompt'), 'كن لطيفاً', 'cached');
+  assertEquals(db.calls.length, 1);
+  now = 61_000;
+  assertEquals(await store.getSetting('system_prompt'), 'جديد', 'refreshed after a minute');
+  fail = true;
+  now = 200_000;
+  assertEquals(await store.getSetting('system_prompt'), 'جديد', 'last known value on errors');
+  assertEquals(await store.getSetting('other'), '', 'unknown and unreadable: empty');
+  fail = false;
+  rows = [];
+  assertEquals(await store.getSetting('missing'), '');
+});
