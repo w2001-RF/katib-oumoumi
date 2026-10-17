@@ -40,10 +40,10 @@
   <link rel="icon" href="favicon-32x32.png" type="image/png" sizes="32x32" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
 
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <!-- Amiri: headings (naskh) · IBM Plex Sans Arabic: text · Tajawal: the document preview, as exported -->
-  <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Tajawal:wght@400;700&display=swap" rel="stylesheet" />
+  <!-- Self-hosted fonts (fonts/README.md): Amiri headings, IBM Plex Sans Arabic text,
+       Tajawal for the document preview. Each stylesheet is pinned by an integrity
+       hash, kept up to date by tools/sri.js (checked in CI by tests/web/sri_test.js). -->
+  <link rel="stylesheet" href="fonts/fonts.css" integrity="sha384-ZuQNhV6z4bVzacDCpdLOmYjTLwVreYE7yb+GP+CQ52U+tf3vSltR3z4zv1mCZFPj" />
 
   <!-- Saved light/dark choice, applied before the first paint (js/theme.js). -->
   <script>
@@ -55,7 +55,7 @@
     }
   </script>
 
-  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="stylesheet" href="css/styles.css" integrity="sha384-RppVHqMv1M3EaBJPUQFtWoZ57plVmqxmpbgFYZKTEuK4vcvYJDho9gAGC8RtI5gn" />
 </head>
 <body>
   <div id="app">

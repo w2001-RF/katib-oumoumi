@@ -1,0 +1,7 @@
+# Files whose bytes are pinned by an integrity hash in index.html
+# (tools/sri.js): same line endings on every machine, so the hash computed on
+# Windows matches the copy deployed from Linux.
+*.css text eol=lf
+
+# Self-hosted fonts
+*.woff2 binary

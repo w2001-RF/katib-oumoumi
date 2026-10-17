@@ -82,7 +82,7 @@ npx supabase secrets set LLM_MODEL=gemini-3.8-flash
 
 ```bash
 # اختبارات (بدون شبكة ولا قاعدة بيانات)
-npx deno test --config tests/deno.json --allow-env tests supabase/functions
+npx deno test --config tests/deno.json --allow-env --allow-read tests supabase/functions
 
 # تقييم نموذج على eval/cases.json (يستعمل نفس متغيرات LLM_*)
 npx deno run --allow-net --allow-env --allow-read --env-file=supabase/functions/.env eval/run.ts
@@ -104,13 +104,13 @@ npx deno run --allow-net --allow-env --allow-read --env-file=supabase/functions/
 الإعداد في [`sonar-project.properties`](../sonar-project.properties). على SonarQube محلي:
 
 ```bash
-npx deno test --config tests/deno.json --allow-env --coverage=coverage/raw tests supabase/functions
+npx deno test --config tests/deno.json --allow-env --allow-read --coverage=coverage/raw tests supabase/functions
 npx deno coverage coverage/raw --lcov --output=coverage/lcov.info
 npx @sonar/scan -Dsonar.host.url=http://localhost:9000 -Dsonar.token=<TOKEN>
 ```
 or with powershell
 ```bash
-npx deno test --config tests/deno.json --allow-env --coverage=coverage/raw tests supabase/functions
+npx deno test --config tests/deno.json --allow-env --allow-read --coverage=coverage/raw tests supabase/functions
 npx deno coverage coverage/raw --lcov --output=coverage/lcov.info
 $env:SONAR_TOKEN = "<your token>"
 npx @sonar/scan "-Dsonar.host.url=http://localhost:9000"

@@ -34,7 +34,7 @@ jobs:
       # Same command as in docs/ai-agent.md. tests/deno.json maps the Supabase
       # client to an in-memory fake: no network, database or secrets needed.
       - name: Run tests with coverage
-        run: deno test --config tests/deno.json --allow-env --coverage=coverage/raw tests supabase/functions
+        run: deno test --config tests/deno.json --allow-env --allow-read --coverage=coverage/raw tests supabase/functions
 
       - name: Coverage report
         run: |
