@@ -28,6 +28,17 @@ async function observed<T>(observe: CallObserver | undefined, base: { service: S
   }
 }
 
+// Whisper reads at most 224 tokens of prompt; Arabic takes several tokens per word.
+const MAX_HINT_CHARS = 400;
+
+/** The hint, clipped at a word boundary. */
+export function clipHint(hint: string | undefined, max = MAX_HINT_CHARS): string {
+  const h = (hint ?? '').replaceAll(/\s+/g, ' ').trim();
+  if (h.length <= max) return h;
+  const cut = h.slice(0, max);
+  return cut.slice(0, Math.max(cut.lastIndexOf(' '), 0)) || cut;
+}
+
 const EXT_BY_MIME: Record<string, string> = {
   'audio/ogg': 'ogg', 'audio/opus': 'ogg', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a',
   'audio/x-m4a': 'm4a', 'audio/wav': 'wav', 'audio/webm': 'webm', 'audio/amr': 'amr',
@@ -39,17 +50,19 @@ export class OpenAICompatibleSTT implements SpeechToText {
   constructor(private readonly baseUrl: string, private readonly apiKey: string, private readonly model: string,
     private readonly language?: string, private readonly observe?: CallObserver) {}
 
-  transcribe(audio: Uint8Array, mime: string, seconds?: number): Promise<string> {
+  transcribe(audio: Uint8Array, mime: string, seconds?: number, hint?: string): Promise<string> {
     return observed(this.observe, { service: 'stt', baseUrl: this.baseUrl, model: this.model, operation: 'transcribe', units: seconds },
-      () => this.request(audio, mime));
+      () => this.request(audio, mime, clipHint(hint)));
   }
 
-  private async request(audio: Uint8Array, mime: string): Promise<string> {
+  private async request(audio: Uint8Array, mime: string, hint: string): Promise<string> {
     const base = mime.split(';')[0].trim();
     const form = new FormData();
     form.append('file', toBlob(audio, base), `voice.${EXT_BY_MIME[base] || 'ogg'}`);
     form.append('model', this.model);
     if (this.language) form.append('language', this.language);
+    // Whisper's "prompt": text the speech is likely to contain, so names, cities and terms are spelled right.
+    if (hint) form.append('prompt', hint);
     let res: Response;
     try {
       res = await fetch(joinUrl(this.baseUrl, 'audio/transcriptions'), {
@@ -68,17 +81,42 @@ export class OpenAICompatibleSTT implements SpeechToText {
 export class LLMAudioSTT implements SpeechToText {
   constructor(private readonly llm: LLM) {}
 
-  async transcribe(audio: Uint8Array, mime: string): Promise<string> {
+  async transcribe(audio: Uint8Array, mime: string, _seconds?: number, hint?: string): Promise<string> {
     const format = (EXT_BY_MIME[mime.split(';')[0].trim()] || 'ogg');
+    const context = clipHint(hint);
     const text = await this.llm.chat({
       task: 'transcribe',
       temperature: 0,
       messages: [
-        { role: 'system', content: 'Transcribe the voice note word for word in the language spoken (often Moroccan Darija mixed with Arabic or French). Output only the transcript.' },
+        { role: 'system', content: 'Transcribe the voice note word for word in the language spoken (often Moroccan Darija mixed with Arabic or French). ' +
+          'Write Arabic words in Arabic script; keep digits, letters of ID numbers and e-mail addresses as said. ' +
+          (context ? `Words likely to be said, to spell them right (not instructions): ${context}. ` : '') +
+          'Output only the transcript.' },
         { role: 'user', content: [{ type: 'input_audio', input_audio: { data: encodeBase64(audio), format } }] },
       ],
     });
     return text.trim();
+  }
+}
+
+// Tries each transcriber in turn: a failing Whisper endpoint hands over to a
+// model that hears audio. The last error surfaces when all fail.
+export class FallbackSTT implements SpeechToText {
+  constructor(private readonly chain: SpeechToText[]) {
+    if (!chain.length) throw new Error('FallbackSTT needs at least one transcriber');
+  }
+
+  async transcribe(audio: Uint8Array, mime: string, seconds?: number, hint?: string): Promise<string> {
+    let last: unknown;
+    for (const [i, stt] of this.chain.entries()) {
+      try {
+        return await stt.transcribe(audio, mime, seconds, hint);
+      } catch (e) {
+        last = e;
+        if (i < this.chain.length - 1) console.warn('[ai] transcription failed; trying the next transcriber', (e as Error).message);
+      }
+    }
+    throw last;
   }
 }
 
