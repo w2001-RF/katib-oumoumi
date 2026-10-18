@@ -40,11 +40,16 @@ export function takeReturnPath(storage = sessionStore()) {
   return isAdminPath(path) ? path : '/admin';
 }
 
-/** Whether the login page was opened because the session expired (read once). */
-export function takeExpiredNotice(storage = sessionStore()) {
-  const expired = safely(() => storage?.getItem(EXPIRED_KEY)) === '1';
+/**
+ * Whether the login page was opened because the session expired. Kept until
+ * the admin signs in again (clearExpiredNotice), so the page can be drawn twice.
+ */
+export function hasExpiredNotice(storage = sessionStore()) {
+  return safely(() => storage?.getItem(EXPIRED_KEY)) === '1';
+}
+
+export function clearExpiredNotice(storage = sessionStore()) {
   safely(() => storage?.removeItem(EXPIRED_KEY));
-  return expired;
 }
 
 /**

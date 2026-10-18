@@ -77,6 +77,30 @@ Deno.test('router matches patterns, decodes params, cleans up the previous view'
   assertEquals(visited, ['/doc/abc%20d', '/a.b', '/aXb']);
 });
 
+Deno.test('router: a view that finishes after the user moved on is cleaned up, the current one is kept', async () => {
+  fakeLocation('#/slow');
+  const mount = { scrollTop: 0, innerHTML: '' };
+  const cleaned = [];
+  let finishSlow;
+  registerRoute('/slow', async () => {
+    await new Promise((r) => (finishSlow = r));
+    return () => cleaned.push('slow');
+  });
+  registerRoute('/fast', () => () => cleaned.push('fast'));
+  initRouter(mount, null);
+
+  const slow = renderCurrentRoute();
+  globalThis.location.hash = '#/fast';
+  await renderCurrentRoute();
+  finishSlow();
+  await slow;
+  assertEquals(cleaned, ['slow'], 'the late view is cleaned up at once');
+
+  globalThis.location.hash = '#/aXb';
+  await renderCurrentRoute();
+  assertEquals(cleaned, ['slow', 'fast'], 'the current view keeps its cleanup');
+});
+
 Deno.test('currentPath and navigate', async () => {
   fakeLocation('');
   assertEquals(currentPath(), '/');

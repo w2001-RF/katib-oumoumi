@@ -6,7 +6,9 @@
 // verify_jwt on, such as agent-status). This fetch, given to the Supabase
 // client, refreshes the session once and replays the request; when the
 // session cannot be refreshed (refresh token expired or revoked) it reports
-// it, and the app sends the admin back to the login page (main.js).
+// it, and the app sends the admin back to the login page (main.js); the
+// request itself is replayed as an anonymous visitor, so public pages keep
+// working (admin-only data stays refused by row level security).
 
 // PGRST301 / PGRST303: PostgREST JWT errors. "Invalid JWT" / "JWT expired":
 // the Edge Functions gateway. bad_jwt: Supabase Auth.
@@ -22,10 +24,11 @@ const urlOf = (input) => String(input?.url ?? input ?? '');
 /**
  * A fetch that recovers from an expired JWT.
  * - `refresh()`: a new access token, or null when the session is gone;
- * - `onExpired()`: called when it is gone (the 401 response is still returned).
+ * - `onExpired()`: called when it is gone;
+ * - `anonKey`: then the request is replayed with it (without it, the 401 is returned).
  * Concurrent failures share one refresh. Auth endpoints are left alone.
  */
-export function createAuthAwareFetch({ baseFetch = globalThis.fetch, refresh, onExpired }) {
+export function createAuthAwareFetch({ baseFetch = globalThis.fetch, refresh, onExpired, anonKey }) {
   let refreshing = null;
   const refreshOnce = () => {
     refreshing ??= Promise.resolve()
@@ -44,12 +47,10 @@ export function createAuthAwareFetch({ baseFetch = globalThis.fetch, refresh, on
     if (!isExpiredJwt(res.status, body)) return res;
 
     const token = await refreshOnce();
-    if (!token) {
-      onExpired?.();
-      return res;
-    }
+    if (!token) onExpired?.();
+    if (!token && !anonKey) return res;
     const headers = new Headers(init.headers ?? input?.headers);
-    headers.set('Authorization', `Bearer ${token}`);
+    headers.set('Authorization', `Bearer ${token ?? anonKey}`);
     return baseFetch(input, { ...init, headers });
   };
 }

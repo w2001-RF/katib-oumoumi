@@ -2,6 +2,7 @@ const routes = [];
 let currentCleanup = null;
 let mountEl = null;
 let onNavigate = null;
+let renderSeq = 0;
 
 export function registerRoute(pattern, handler) {
   // pattern example: '/doc/:id'
@@ -52,6 +53,7 @@ export function currentPath() {
 
 export async function renderCurrentRoute() {
   const path = currentPath();
+  const seq = ++renderSeq;
   if (typeof currentCleanup === 'function') {
     try { currentCleanup(); } catch { /* noop */ }
     currentCleanup = null;
@@ -63,6 +65,22 @@ export async function renderCurrentRoute() {
     mountEl.innerHTML = `<div class="empty-state"><h3>الصفحة غير موجودة</h3></div>`;
     return;
   }
-  const result = await match.handler(mountEl, match.params);
-  if (typeof result === 'function') currentCleanup = result;
+  const result = await match.handler(viewElement(), match.params);
+  if (typeof result !== 'function') return;
+  // A view that finished after the user moved on is cleaned up at once (timers, listeners).
+  if (seq === renderSeq) currentCleanup = result;
+  else result();
+}
+
+// Each render draws into its own element: a view still loading when the user
+// moves on (slow network, quick back button) then fills a detached element
+// instead of overwriting the next page. `display: contents` keeps the layout
+// of #app (flex column, sticky header and bottom bar) unchanged.
+function viewElement() {
+  if (typeof mountEl.replaceChildren !== 'function') return mountEl; // unit tests: no DOM
+  const view = mountEl.ownerDocument.createElement('div');
+  view.className = 'route-view';
+  view.style.display = 'contents';
+  mountEl.replaceChildren(view);
+  return view;
 }
