@@ -147,8 +147,13 @@ export const msg = (extra: Partial<IncomingMessage>): IncomingMessage => ({
 });
 
 export class FakeSTT implements SpeechToText {
-  constructor(private readonly transcript: string) {}
-  transcribe(): Promise<string> { return Promise.resolve(this.transcript); }
+  /** The hint passed with each call. */
+  hints: (string | undefined)[] = [];
+  constructor(private readonly transcript: string, private readonly fail = false) {}
+  transcribe(_audio: Uint8Array, _mime: string, _seconds?: number, hint?: string): Promise<string> {
+    this.hints.push(hint);
+    return this.fail ? Promise.reject(new Error('stt down')) : Promise.resolve(this.transcript);
+  }
 }
 
 export class FakeTTS implements TextToSpeech {

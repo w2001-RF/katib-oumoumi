@@ -35,6 +35,12 @@ export const MSG = {
   voiceNotSupported: 'سمح ليا، دابا ما نقدرش نسمع الرسائل الصوتية. عافاك كتب ليا.',
   unsupported: 'سمح ليا، هاد النوع ديال الملفات ما نقدرش نقراه. صيفط تصويرة ولا كتب ليا.',
   emptyTranscript: 'ما فهمتش الرسالة الصوتية مزيان. عاود عافاك بشوية وفبلاصة هادئة.',
+  voiceTooLong: (minutes: number) => `الرسالة الصوتية طويلة بزاف ⏱️ عافاك قسمها لرسائل قصار (أقل من ${minutes} دقايق)، ولا كتب ليا.`,
+  voiceFailed: 'سمح ليا، ما قدرتش نسمع الرسالة الصوتية دابا 😔 عاود صيفطها من بعد شوية، ولا كتب ليا.',
+  heard: (transcript: string) => `🎙️ سمعت: «${transcript}»`,
+  voiceOn: 'تمام، غادي نجاوبك حتى بالصوت 🔊 باش توقفها كتب /voice.',
+  voiceOff: 'تمام، غادي نجاوبك غير بالكتابة. باش ترجع الصوت كتب /voice.',
+  voiceRepliesUnavailable: 'سمح ليا، الردود الصوتية ما مفعلاش دابا. تقدر تصيفط ليا رسائل صوتية ونجاوبك بالكتابة.',
   confirmIntro: 'هادي هي المعلومات اللي عندي:',
   confirmQuestion: 'واش كلشي صحيح؟',
   confirmYes: '✅ صحيح، وجد الوثيقة',
@@ -57,6 +63,7 @@ export const MSG = {
     '/edit — نبدلو شي معلومة\n' +
     '/skip — نفوتو سؤال اختياري\n' +
     '/new — نبداو وثيقة جديدة\n' +
+    '/voice — الردود الصوتية (تشغيل / إيقاف)\n' +
     '/mydata — المعلومات المحفوظة عليك\n' +
     '/privacy — الخصوصية\n' +
     '/forget — مسح المعلومات ديالك\n' +
@@ -109,6 +116,7 @@ export const BOT_COMMANDS: { command: string; description: string }[] = [
   { command: 'status', description: 'فين وصلنا فالوثيقة' },
   { command: 'edit', description: 'نبدلو شي معلومة' },
   { command: 'skip', description: 'نفوتو سؤال اختياري' },
+  { command: 'voice', description: 'الردود الصوتية (تشغيل / إيقاف)' },
   { command: 'mydata', description: 'المعلومات المحفوظة عليا' },
   { command: 'privacy', description: 'الخصوصية' },
   { command: 'forget', description: 'مسح المعلومات ديالي' },

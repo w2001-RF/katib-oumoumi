@@ -5,7 +5,7 @@ import { assert, assertEquals, assertStringIncludes } from 'jsr:@std/assert@1';
 import { type LLM, LLMError } from '../ai/types.ts';
 import { type DocumentRenderer, HtmlFileRenderer } from '../docs/render.ts';
 import { DOC, FakeSTT, FakeTTS, MemoryStore, msg, RecordingChannel, ScriptedLLM } from '../testing/agentFakes.ts';
-import { type AgentDeps, buildSummary, handleMessage } from './engine.ts';
+import { type AgentDeps, buildSummary, forSpeech, handleMessage } from './engine.ts';
 import { isCancel, isYes, MSG } from './messages.ts';
 import type { Conversation } from './types.ts';
 
@@ -78,18 +78,81 @@ Deno.test('voice: unsupported without STT', async () => {
   assertEquals(last(), MSG.voiceNotSupported);
 });
 
-Deno.test('voice: transcribed, answered by voice, back to text when the user types', async () => {
-  const llm = new ScriptedLLM({ intent: [{ document: null, confidence: 0.2, candidates: [] }, { document: null, confidence: 0, candidates: [] }] });
+const VOICE = { audio: { data: new Uint8Array([1]), mime: 'audio/ogg', seconds: 4 } };
+
+Deno.test('voice: transcribed, the transcript shown, answered by voice; typing a sentence goes back to text', async () => {
+  const intent = { document: null, confidence: 0.2, candidates: [] };
+  const llm = new ScriptedLLM({ intent: [intent, intent, intent] });
   const tts = new FakeTTS();
   const { store, user, channel, send } = await setup(llm, { stt: new FakeSTT('بغيت شي حاجة'), tts });
-  await send({ audio: { data: new Uint8Array([1]), mime: 'audio/ogg' } });
+  await send(VOICE);
   assertEquals(store.users.get(user.id)?.prefers_voice, true);
-  assertEquals(channel.voices.length, 1, 'the menu was also spoken');
+  assertEquals(channel.texts[0].text, MSG.heard('بغيت شي حاجة'), 'what was understood comes first');
+  assertEquals(channel.voices.length, 1, 'the menu was spoken, not the transcript');
   assert(!tts.spoken[0].includes('✅'), 'no emoji read aloud');
+  assert(!store.convs[0].history?.some((h) => h.text.includes('🎙️')), 'the transcript echo is not kept in the memory');
 
-  await send({ text: 'كتابة' });
-  assertEquals(store.users.get(user.id)?.prefers_voice, false);
-  assertEquals(channel.voices.length, 1, 'text reply only');
+  await send({ text: 'G754103' });
+  assertEquals(store.users.get(user.id)?.prefers_voice, true, 'a typed value keeps voice replies');
+  assertEquals(channel.voices.length, 2);
+
+  await send({ text: 'غادي نكتب ليك من دابا' });
+  assertEquals(store.users.get(user.id)?.prefers_voice, false, 'a typed sentence switches to text');
+  assertEquals(channel.voices.length, 2, 'text reply only');
+});
+
+Deno.test('voice: a voice note too long is refused before transcription', async () => {
+  const stt = new FakeSTT('x');
+  const { send, last } = await setup(new ScriptedLLM({}), { stt });
+  await send({ audioTooLong: 600 });
+  assertEquals(last(), MSG.voiceTooLong(3));
+  assertEquals(stt.hints.length, 0, 'not transcribed');
+});
+
+Deno.test('voice: a failing transcription asks to resend or type, without a technical error', async () => {
+  const llm = new ScriptedLLM({});
+  const { send, last } = await setup(llm, { stt: new FakeSTT('', true) });
+  await send(VOICE);
+  assertEquals(last(), MSG.voiceFailed);
+  assertEquals(llm.calls, [], 'nothing reaches the model');
+});
+
+Deno.test('voice: the transcriber is told what may be said', async () => {
+  const stt = new FakeSTT('سطات');
+  const llm = new ScriptedLLM({ intent: [{ document: null, confidence: 0, candidates: [] }], extraction: [{ values: [], skipped: [] }],
+    question: [{ text: 'شنو سميتك؟' }] });
+  const { store, user, send } = await setup(llm, { stt });
+  await send(VOICE);
+  assertStringIncludes(stt.hints[0] ?? '', DOC.name_ar, 'while choosing: the documents on offer');
+
+  store.convs = [];
+  startIn(store, user.id, 'collecting');
+  store.convs[0].asked_keys = ['المدينة'];
+  await send(VOICE);
+  const hint = stt.hints[1] ?? '';
+  for (const word of [DOC.name_ar, 'المدينة', 'سطات', 'الدار البيضاء']) assertStringIncludes(hint, word);
+  assert(!hint.includes('أخرى'), '«أخرى» is not a word to expect');
+});
+
+Deno.test('/voice: turns voice replies on and off, or says they are not available', async () => {
+  const { store, user, send, last, channel } = await setup(new ScriptedLLM({}), { tts: new FakeTTS() });
+  await send({ text: '/voice' });
+  assertEquals([last(), store.users.get(user.id)?.prefers_voice], [MSG.voiceOn, true]);
+  assertEquals(channel.voices.length, 1, 'confirmed by voice');
+  await send({ text: '/voice' });
+  assertEquals([last(), store.users.get(user.id)?.prefers_voice], [MSG.voiceOff, false]);
+
+  const without = await setup();
+  await without.send({ text: '/voice' });
+  assertEquals(without.last(), MSG.voiceRepliesUnavailable);
+});
+
+Deno.test('forSpeech: no emoji, links, markup or commands; long texts cut at a sentence end', () => {
+  assertEquals(forSpeech('✅ مزيان! شوف https://katiboumoumi.online و **/help** • تمام'), 'مزيان! شوف و تمام');
+  const long = `${'جملة قصيرة. '.repeat(30)}نهاية`;
+  const spoken = forSpeech(long, 100);
+  assert(spoken.length <= 100 && spoken.endsWith('.'), spoken);
+  assertEquals(forSpeech('كلمة'.repeat(40), 50), `${'كلمة'.repeat(40).slice(0, 50)}…`, 'no sentence end: cut and marked');
 });
 
 Deno.test('voice: empty transcript and a failing TTS', async () => {

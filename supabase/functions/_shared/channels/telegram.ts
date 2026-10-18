@@ -5,7 +5,7 @@ import type { IncomingMessage } from '../agent/types.ts';
 import { toBlob } from '../ai/base64.ts';
 import { errorKindFor, redact } from '../metrics/classify.ts';
 import { type CallObserver, emit } from '../metrics/types.ts';
-import type { Button, Channel } from './types.ts';
+import { type Button, type Channel, MAX_VOICE_SECONDS } from './types.ts';
 
 const API = 'https://api.telegram.org';
 const MAX_TEXT = 4000; // Telegram limit is 4096
@@ -24,7 +24,8 @@ export class TelegramChannel implements Channel {
   readonly name = 'telegram' as const;
 
   /** `observe` receives one telemetry event per Bot API call (see _shared/metrics). */
-  constructor(private readonly token: string, private readonly observe?: CallObserver) {}
+  constructor(private readonly token: string, private readonly observe?: CallObserver,
+    private readonly maxVoiceSeconds = MAX_VOICE_SECONDS) {}
 
   private async call(method: string, body: Record<string, unknown> | FormData): Promise<any> {
     return await this.observed(method, async () => {
@@ -143,8 +144,11 @@ export class TelegramChannel implements Channel {
       text: m.text ?? m.caption ?? '',
     };
     const voice = m.voice ?? m.audio;
-    if (voice) {
-      msg.audio = { data: await this.download(voice.file_id), mime: voice.mime_type || 'audio/ogg', seconds: Number(voice.duration) || undefined };
+    const seconds = Number(voice?.duration) || undefined;
+    if (voice && seconds && seconds > this.maxVoiceSeconds) {
+      msg.audioTooLong = seconds;
+    } else if (voice) {
+      msg.audio = { data: await this.download(voice.file_id), mime: voice.mime_type || 'audio/ogg', seconds };
     } else if (m.photo?.length) {
       const largest = m.photo[m.photo.length - 1];
       msg.image = { data: await this.download(largest.file_id), mime: 'image/jpeg' };

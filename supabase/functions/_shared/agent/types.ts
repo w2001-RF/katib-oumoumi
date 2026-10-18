@@ -68,6 +68,8 @@ export interface IncomingMessage {
   text?: string;
   /** `seconds`: length of the voice note, when the channel says. */
   audio?: { data: Uint8Array; mime: string; seconds?: number };
+  /** A voice note too long to be transcribed (its length in seconds); not downloaded. */
+  audioTooLong?: number;
   image?: { data: Uint8Array; mime: string };
   /** A button press: "consent:yes", "doc:<uuid>", "confirm:yes", "confirm:edit". */
   action?: string;

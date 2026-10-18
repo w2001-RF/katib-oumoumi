@@ -41,8 +41,11 @@ export interface LLM {
 }
 
 export interface SpeechToText {
-  /** `seconds`: length of the recording when the channel knows it (for usage and cost). */
-  transcribe(audio: Uint8Array, mime: string, seconds?: number): Promise<string>;
+  /**
+   * `seconds`: length of the recording when the channel knows it (for usage and cost).
+   * `hint`: words likely to be said (document, expected fields, list values), to spell them right.
+   */
+  transcribe(audio: Uint8Array, mime: string, seconds?: number, hint?: string): Promise<string>;
 }
 
 export interface TextToSpeech {

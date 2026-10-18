@@ -14,9 +14,10 @@
 
 import { formatDateAr } from '../../../../js/utils/format.js';
 import { renderTemplate } from '../../../../js/utils/templateEngine.js';
+import { OTHER_OPTION } from '../../../../js/utils/validators.js';
 import type { Role } from '../ai/registry.ts';
 import { type LLM, LLMError, type SpeechToText, type TextToSpeech } from '../ai/types.ts';
-import type { Button, Channel } from '../channels/types.ts';
+import { type Button, type Channel, MAX_VOICE_SECONDS } from '../channels/types.ts';
 import type { DocumentRenderer } from '../docs/render.ts';
 import { errorText } from '../metrics/classify.ts';
 import type { TurnMetrics, TurnOutcome } from '../metrics/types.ts';
@@ -140,9 +141,22 @@ async function anytimeCommand(ctx: Ctx, command: string): Promise<boolean> {
     case 'mydata':
       await say(ctx, await myData(ctx), { voice: false });
       return true;
+    case 'voice':
+      await toggleVoice(ctx);
+      return true;
     default:
       return false;
   }
+}
+
+// Voice replies on/off. Sending a voice note turns them on again, typing a
+// sentence turns them off (readInput): the command is for the other cases.
+async function toggleVoice(ctx: Ctx) {
+  if (!ctx.deps.tts) return say(ctx, MSG.voiceRepliesUnavailable, { voice: false });
+  const on = !ctx.user.prefers_voice;
+  await ctx.deps.store.setPrefersVoice(ctx.user.id, on);
+  ctx.user.prefers_voice = on;
+  return say(ctx, on ? MSG.voiceOn : MSG.voiceOff);
 }
 
 // Commands about the document in progress (after consent).
@@ -291,10 +305,10 @@ async function persona(ctx: Ctx): Promise<string> {
 
 async function converse(ctx: Ctx, msg: IncomingMessage) {
   const { store } = ctx.deps;
-  const input = await readInput(ctx, msg);
+  const active = await store.getActiveConversation(ctx.user.id);
+  const input = await readInput(ctx, msg, active);
   if (!input) return;
 
-  const active = await store.getActiveConversation(ctx.user.id);
   const conv = active ?? (await store.createConversation(ctx.user.id));
   ctx.trace.conv = conv;
   ctx.trace.stateBefore = active ? conv.status : 'new';
@@ -320,28 +334,82 @@ async function dispatch(ctx: Ctx, conv: Conversation, input: Input, action?: str
 
 // Text of the message, with voice notes transcribed. Replies in the same
 // form the user last used (voice ↔ text). Null when nothing usable came in.
-async function readInput(ctx: Ctx, msg: IncomingMessage): Promise<Input | null> {
-  const { store, stt } = ctx.deps;
+async function readInput(ctx: Ctx, msg: IncomingMessage, active: Conversation | null): Promise<Input | null> {
+  const { store } = ctx.deps;
   let text = (msg.text ?? '').trim();
+  if (msg.audioTooLong) {
+    await say(ctx, MSG.voiceTooLong(Math.floor(MAX_VOICE_SECONDS / 60)));
+    return null;
+  }
   if (msg.audio) {
-    if (!stt) {
-      await say(ctx, MSG.voiceNotSupported, { voice: false });
-      return null;
-    }
-    await ctx.deps.channel.showActivity(ctx.chatId, 'typing');
-    text = await stt.transcribe(msg.audio.data, msg.audio.mime, msg.audio.seconds);
+    const heard = await transcribe(ctx, msg.audio, active);
+    if (heard === null) return null;
+    text = heard;
     if (!ctx.user.prefers_voice) await store.setPrefersVoice(ctx.user.id, true);
     ctx.user.prefers_voice = true;
     if (!text) {
       await say(ctx, MSG.emptyTranscript);
       return null;
     }
-  } else if (text && ctx.user.prefers_voice) {
+    // What was understood, so a misheard name or number is seen at once (not spoken, not in the history).
+    await say(ctx, MSG.heard(clipTranscript(text)), { voice: false, noted: true });
+  } else if (text && ctx.user.prefers_voice && switchesToText(text)) {
     await store.setPrefersVoice(ctx.user.id, false);
     ctx.user.prefers_voice = false;
   }
   if (!text && !msg.image && !msg.action) return null;
   return { text, image: msg.image };
+}
+
+// The transcript ('' when nothing was heard), or null when the user was
+// already told why there is none (no transcriber, or it failed).
+async function transcribe(ctx: Ctx, audio: NonNullable<IncomingMessage['audio']>, active: Conversation | null): Promise<string | null> {
+  const { stt } = ctx.deps;
+  if (!stt) {
+    await say(ctx, MSG.voiceNotSupported, { voice: false });
+    return null;
+  }
+  await ctx.deps.channel.showActivity(ctx.chatId, 'typing');
+  try {
+    return await stt.transcribe(audio.data, audio.mime, audio.seconds, await transcriptionHint(ctx, active));
+  } catch (e) {
+    // Every transcriber failed (each failure is in the telemetry): ask to resend or type.
+    console.warn('[agent] transcription failed', e);
+    await say(ctx, MSG.voiceFailed, { voice: false });
+    return null;
+  }
+}
+
+// Words the user is likely to say now, for the transcriber to spell them right:
+// the document and the fields asked (with their list values: cities...),
+// or the documents on offer while none is chosen.
+async function transcriptionHint(ctx: Ctx, conv: Conversation | null): Promise<string> {
+  const { store } = ctx.deps;
+  try {
+    const doc = conv?.document_type_id ? await store.getDocument(conv.document_type_id) : null;
+    if (!conv || !doc) return (await store.listCatalog()).map((d) => d.name_ar).join('، ');
+    const asked = doc.fields.filter((f) => conv.asked_keys.includes(f.field_key));
+    const fields = asked.length ? asked : missingFields(doc, conv).slice(0, 3);
+    const options = fields.flatMap((f) => (f.field_type === 'select' ? f.options.filter((o) => o !== OTHER_OPTION) : []));
+    return [doc.name_ar, ...fields.map((f) => f.label_ar), ...options].join('، ');
+  } catch {
+    return ''; // a hint only helps: never fail the turn for it
+  }
+}
+
+const HEARD_MAX_CHARS = 300;
+
+function clipTranscript(text: string): string {
+  return text.length > HEARD_MAX_CHARS ? `${text.slice(0, HEARD_MAX_CHARS - 1)}…` : text;
+}
+
+// A voice user who types a CIN, a phone number, an e-mail or a one-word answer
+// keeps voice replies; typing a sentence means they switched to text.
+const TYPED_SENTENCE_MIN_WORDS = 4;
+
+function switchesToText(text: string): boolean {
+  if (text.startsWith('/') || /[\d@]/.test(text)) return false;
+  return text.split(/\s+/).filter(Boolean).length >= TYPED_SENTENCE_MIN_WORDS;
 }
 
 // --- choosing the document --------------------------------------------------
@@ -648,9 +716,24 @@ function today(ctx: Ctx): string {
   return ctx.deps.today ? ctx.deps.today() : new Date().toISOString().slice(0, 10);
 }
 
-// Emoji (with their variation selector), bullets and /commands are not read aloud.
-function forSpeech(text: string): string {
-  return text.replaceAll(/\p{Extended_Pictographic}️?|•/gu, '').replaceAll(/\/\w+/g, '').trim();
+// Emoji (with their variation selector), bullets, links, markup and /commands
+// are not read aloud. A long text is cut at a sentence end: voice notes stay
+// short, and TTS services cap their input.
+export const MAX_SPOKEN_CHARS = 1200;
+const SENTENCE_END_RE = /[.!؟?\n]/g;
+
+export function forSpeech(text: string, max = MAX_SPOKEN_CHARS): string {
+  const clean = text
+    .replaceAll(/https?:\/\/\S+/g, '')
+    .replaceAll(/\p{Extended_Pictographic}️?|[•*_#`]/gu, '')
+    .replaceAll(/\/\w+/g, '')
+    .replaceAll(/[ \t]+/g, ' ')
+    .trim();
+  if (clean.length <= max) return clean;
+  const head = clean.slice(0, max);
+  const ends = [...head.matchAll(SENTENCE_END_RE)].map((m) => m.index ?? 0);
+  const cut = ends.at(-1);
+  return cut && cut > max / 2 ? head.slice(0, cut + 1).trim() : `${head.trim()}…`;
 }
 
 // Always sends text (screen readers, records); adds a voice note when the
