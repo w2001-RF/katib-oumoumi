@@ -111,9 +111,13 @@ export interface ExtractResult {
   skipped: string[];
 }
 
+// Every option of a select field is listed (the city list has 80): a value
+// the model cannot see is a value it cannot pick. Bounded all the same.
+const MAX_OPTIONS = 200;
+
 function describeField(f: TemplateField, id: string): string {
   const parts = [`${id}: "${f.label_ar}" (type ${f.field_type}${f.is_required ? ', required' : ', optional'})`];
-  if (f.field_type === 'select' && f.options.length) parts.push(`one of: ${f.options.slice(0, 40).join(' | ')}`);
+  if (f.field_type === 'select' && f.options.length) parts.push(`one of: ${f.options.slice(0, MAX_OPTIONS).join(' | ')}`);
   if (f.placeholder_ar) parts.push(`hint: ${f.placeholder_ar}`);
   return parts.join(' — ');
 }
@@ -135,7 +139,9 @@ export async function extractFields(llm: LLM, input: ExtractInput): Promise<Extr
     '- CIN like G754103, phone like 0612345678, amounts as digits only;\n' +
     '- names, addresses and short texts in Arabic script, as written on official papers;\n' +
     '- long-text fields: keep everything the user said, in their own words (it is rewritten later);\n' +
-    '- for a select field, use the closest option exactly as listed;\n' +
+    '- for a select field, the value must be one of the listed options, copied exactly; translate a name written ' +
+    'in French or Latin letters to its listed Arabic option (Casablanca = الدار البيضاء, Fès = فاس). If no option ' +
+    'clearly matches, omit the field, unless the list contains «أخرى»: then give the value in Arabic script;\n' +
     '- "skipped" lists optional fields the user explicitly declines or does not have (e.g. no email).';
 
   const content: ContentPart[] = [];
@@ -189,9 +195,12 @@ export interface QuestionInput {
 
 export async function phraseQuestion(llm: LLM, input: QuestionInput): Promise<string> {
   const lines = input.fields.map((f) => {
-    const bits = [`- ${f.label_ar} (${f.field_type}${f.is_required ? '' : ', optional: say they can skip it'})`];
+    const bits = [`- ${f.label_ar} (${f.field_type}${f.is_required ? '' : ', optional: say clearly that it is optional and that they can answer "no" to go on'})`];
     if (f.ask_prompt) bits.push(`preferred wording: ${f.ask_prompt}`);
-    if (f.field_type === 'select' && f.options.length <= 8) bits.push(`options: ${f.options.join(' | ')}`);
+    // A short list is offered; a long one only after a rejected answer, to suggest the closest options.
+    if (f.field_type === 'select' && (f.options.length <= 8 || input.errors[f.field_key])) {
+      bits.push(`options: ${f.options.slice(0, MAX_OPTIONS).join(' | ')}`);
+    }
     if (input.errors[f.field_key]) bits.push(`the previous answer was rejected: ${input.errors[f.field_key]}`);
     return bits.join(' — ');
   });
@@ -207,7 +216,8 @@ export async function phraseQuestion(llm: LLM, input: QuestionInput): Promise<st
             'Reply in the same language and script as the user\'s last message (default: Moroccan Darija in Arabic script). ' +
             'Be warm and very simple. One short question per field. ' +
             (input.voice ? 'It will be read aloud: no lists, no symbols, no emoji, spell out examples. ' : '') +
-            'If a previous answer was rejected, say so kindly and give an example of the right format.',
+            'If a previous answer was rejected, say so kindly and give an example of the right format; for a field ' +
+            'with options, suggest the 3 listed options closest to the answer, written exactly as listed.',
         },
         { role: 'user', content: input.lastUserMessage || '(no message)' },
       ],

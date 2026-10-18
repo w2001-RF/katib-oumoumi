@@ -14,7 +14,6 @@
 
 import { formatDateAr } from '../../../../js/utils/format.js';
 import { renderTemplate } from '../../../../js/utils/templateEngine.js';
-import { validateField } from '../../../../js/utils/validators.js';
 import type { Role } from '../ai/registry.ts';
 import { type LLM, LLMError, type SpeechToText, type TextToSpeech } from '../ai/types.ts';
 import type { Button, Channel } from '../channels/types.ts';
@@ -23,7 +22,7 @@ import { errorText } from '../metrics/classify.ts';
 import type { TurnMetrics, TurnOutcome } from '../metrics/types.ts';
 import { historyForPrompt, IMAGE_MARKER, remember } from './memory.ts';
 import { isCancel, isYes, MSG, parseCommand, PROFILE_LABELS } from './messages.ts';
-import { normalizeValue } from './normalize.ts';
+import { normalizeValue, validateForBot } from './normalize.ts';
 import type { AgentStore } from './store.ts';
 import { detectIntent, extractFields, type ExtractResult, phraseQuestion, rewriteFormal } from './tasks.ts';
 import { type TurnTrace, turnRecord } from './telemetry.ts';
@@ -60,6 +59,8 @@ interface Ctx {
   /** Bumped when the history changes, and noted when it is saved: one write per turn. */
   historyVersion: number;
   savedVersion: number;
+  /** Labels of the optional fields skipped this turn: the reply says they can be added later. */
+  skipped?: string[];
 }
 
 interface Input {
@@ -204,6 +205,7 @@ async function skipQuestion(ctx: Ctx) {
   }
   ctx.conv = conv;
   for (const f of optional) if (!conv.skipped_keys.includes(f.field_key)) conv.skipped_keys.push(f.field_key);
+  ctx.skipped = optional.map((f) => f.label_ar);
   const errors = Object.fromEntries(asked.filter((f) => f.is_required).map((f) => [f.field_key, MSG.requiredCannotSkip(f.label_ar)]));
   note(ctx, 'user', '/skip');
   return askNextOrConfirm(ctx, conv, doc, errors, '');
@@ -214,11 +216,14 @@ async function editValues(ctx: Ctx) {
   const active = await loadActive(ctx);
   const conv = active?.conv;
   const doc = active?.doc;
-  if (!conv || !doc || !Object.keys(conv.field_values).length) return say(ctx, MSG.nothingToEdit);
+  if (!conv || !doc || !(Object.keys(conv.field_values).length || conv.skipped_keys.length)) return say(ctx, MSG.nothingToEdit);
   ctx.conv = conv;
-  // While collecting, only open fields are read from the next message: open the filled ones too.
-  if (conv.status === 'collecting') conv.asked_keys = Object.keys(conv.field_values);
-  const text = `${MSG.editIntro}\n\n${valueLines(doc, conv)}\n\n${MSG.whatToEdit}`;
+  // While collecting, only open fields are read from the next message: open the filled and skipped ones too.
+  if (conv.status === 'collecting') conv.asked_keys = [...Object.keys(conv.field_values), ...conv.skipped_keys];
+  const lines = valueLines(doc, conv);
+  const skipped = doc.fields.filter((f) => conv.skipped_keys.includes(f.field_key)).map((f) => f.label_ar);
+  const parts = [lines ? `${MSG.editIntro}\n\n${lines}` : '', skipped.length ? MSG.editSkipped(skipped) : '', MSG.whatToEdit];
+  const text = parts.filter(Boolean).join('\n\n');
   note(ctx, 'bot', text);
   await persist(ctx, conv);
   return say(ctx, text, { noted: true });
@@ -394,7 +399,7 @@ async function prefillFromProfile(ctx: Ctx, conv: Conversation, doc: AgentDocume
   for (const [attr, key] of entries) {
     const field = doc.fields.find((f) => f.field_key === key);
     const value = profile[attr];
-    if (field && value && !validateField(field, value)) conv.field_values[key] = value;
+    if (field && value && !validateForBot(field, value)) conv.field_values[key] = value;
   }
 }
 
@@ -444,7 +449,7 @@ async function apply(ctx: Ctx, conv: Conversation, doc: AgentDocument, result: E
     const field = doc.fields.find((f) => f.field_key === key);
     if (!field) continue;
     const value = normalizeValue(field, raw);
-    const error = validateField(field, value);
+    const error = validateForBot(field, value);
     if (error) errors[key] = error;
     else if (field.field_type === 'text') longTexts.push({ field, value });
     else conv.field_values[key] = value;
@@ -458,18 +463,24 @@ async function apply(ctx: Ctx, conv: Conversation, doc: AgentDocument, result: E
     conv.field_values[field.field_key] = rewritten[i].formal_ar;
     conv.field_summaries[field.field_key] = rewritten[i].darija_summary;
   });
-  applySkipped(conv, doc, result.skipped, errors);
+  ctx.skipped = applySkipped(conv, doc, result.skipped, errors);
   return errors;
 }
 
 // Optional fields the user declined are skipped; a required one cannot be.
-function applySkipped(conv: Conversation, doc: AgentDocument, skipped: string[], errors: Record<string, string>) {
+// Returns the labels of the fields newly skipped.
+function applySkipped(conv: Conversation, doc: AgentDocument, skipped: string[], errors: Record<string, string>): string[] {
+  const labels: string[] = [];
   for (const key of skipped) {
     const field = doc.fields.find((f) => f.field_key === key);
     if (!field || key in conv.field_values) continue;
     if (field.is_required) errors[key] = MSG.requiredCannotSkip(field.label_ar);
-    else if (!conv.skipped_keys.includes(key)) conv.skipped_keys.push(key);
+    else if (!conv.skipped_keys.includes(key)) {
+      conv.skipped_keys.push(key);
+      labels.push(field.label_ar);
+    }
   }
+  return labels;
 }
 
 export function missingFields(doc: AgentDocument, conv: Conversation): TemplateField[] {
@@ -493,15 +504,20 @@ export function nextBatch(missing: TemplateField[], errors: Record<string, strin
 
 async function askNextOrConfirm(ctx: Ctx, conv: Conversation, doc: AgentDocument, errors: Record<string, string>, lastText: string) {
   const missing = missingFields(doc, conv);
+  // Skipping an optional field is fine, but the user is told it can still be added.
+  const skippedNote = ctx.skipped?.length ? MSG.skippedCanAdd(ctx.skipped) : '';
+  ctx.skipped = [];
   if (!missing.length) {
     conv.status = 'confirming';
     conv.asked_keys = [];
+    if (skippedNote) await say(ctx, skippedNote);
     return sendSummary(ctx, conv, doc);
   }
   const batch = nextBatch(missing, errors, ctx.user.prefers_voice);
   conv.asked_keys = batch.map((f) => f.field_key);
   // Phrase the question first, so it is saved in the history with the state.
-  const text = await question(ctx, batch, errors, lastText);
+  const asked = await question(ctx, batch, errors, lastText);
+  const text = skippedNote ? `${skippedNote}\n\n${asked}` : asked;
   note(ctx, 'bot', text);
   await persist(ctx, conv);
   return say(ctx, text, { noted: true });
