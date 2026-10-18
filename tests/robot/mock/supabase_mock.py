@@ -467,7 +467,7 @@ class MockServer:
 if __name__ == '__main__':  # manual use: python tests/robot/mock/supabase_mock.py 8765
 
     server = MockServer(int(sys.argv[1]) if len(sys.argv) > 1 else 8765)
-    print(f'Katib mock running on {server.url} (admin: {ADMIN_EMAIL} / {ADMIN_PASSWORD})', flush=True)
+    print(f'Katib mock running on {server.url} (admin: {ADMIN_EMAIL} / [REDACTED])', flush=True)
     try:
         server.httpd.serve_forever()
     except KeyboardInterrupt:
