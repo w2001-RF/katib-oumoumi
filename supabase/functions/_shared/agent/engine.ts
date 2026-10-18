@@ -7,18 +7,23 @@
 //   (no consent) ──yes──► choosing ──document──► collecting ──all filled──► confirming ──yes──► done
 //                             ▲                                                │ correction
 //                             └────────────── /new, cancel ◄───────────────────┘
+//
+// Commands (/help, /status, /edit...) are handled before the state machine.
+// The last few exchanges are kept on the conversation (memory.ts) and given to
+// the model as context, with the admin's system prompt (agent_settings).
 
 import { formatDateAr } from '../../../../js/utils/format.js';
 import { renderTemplate } from '../../../../js/utils/templateEngine.js';
-import { validateField } from '../../../../js/utils/validators.js';
+import { OTHER_OPTION } from '../../../../js/utils/validators.js';
 import type { Role } from '../ai/registry.ts';
 import { type LLM, LLMError, type SpeechToText, type TextToSpeech } from '../ai/types.ts';
-import type { Button, Channel } from '../channels/types.ts';
+import { type Button, type Channel, MAX_VOICE_SECONDS } from '../channels/types.ts';
 import type { DocumentRenderer } from '../docs/render.ts';
 import { errorText } from '../metrics/classify.ts';
 import type { TurnMetrics, TurnOutcome } from '../metrics/types.ts';
-import { isCancel, isYes, MSG } from './messages.ts';
-import { normalizeValue } from './normalize.ts';
+import { historyForPrompt, IMAGE_MARKER, remember } from './memory.ts';
+import { isCancel, isYes, MSG, parseCommand, PROFILE_LABELS } from './messages.ts';
+import { normalizeValue, validateForBot } from './normalize.ts';
 import type { AgentStore } from './store.ts';
 import { detectIntent, extractFields, type ExtractResult, phraseQuestion, rewriteFormal } from './tasks.ts';
 import { type TurnTrace, turnRecord } from './telemetry.ts';
@@ -34,17 +39,29 @@ export interface AgentDeps {
   today?: () => string; // YYYY-MM-DD, injectable for tests
   /** Telemetry for the admin dashboard; absent = nothing recorded. */
   metrics?: TurnMetrics;
+  /** Fallback system prompt when agent_settings has none (BOT_SYSTEM_PROMPT). */
+  systemPrompt?: string;
 }
 
 const INTENT_MIN_CONFIDENCE = 0.6;
 const FIELDS_PER_QUESTION_TEXT = 3;
 const MAX_CHOICES = 5;
+const MAX_LISTED = 10;
 
 interface Ctx {
   deps: AgentDeps;
   user: AgentUser;
   chatId: string;
   trace: TurnTrace;
+  /** The conversation this turn works on; what say() sends is remembered in it. */
+  conv?: Conversation;
+  /** The admin's system prompt, read once per turn. */
+  persona?: string;
+  /** Bumped when the history changes, and noted when it is saved: one write per turn. */
+  historyVersion: number;
+  savedVersion: number;
+  /** Labels of the optional fields skipped this turn: the reply says they can be added later. */
+  skipped?: string[];
 }
 
 interface Input {
@@ -65,7 +82,8 @@ export async function handleMessage(deps: AgentDeps, msg: IncomingMessage): Prom
       result.outcome = 'duplicate'; // webhook retry
       return;
     }
-    result = { ...result, ...(await runTurn({ deps, user, chatId: msg.chatId, trace }, msg)) };
+    const ctx: Ctx = { deps, user, chatId: msg.chatId, trace, historyVersion: 0, savedVersion: 0 };
+    result = { ...result, ...(await runTurn(ctx, msg)) };
   } catch (e) {
     result = { ...result, outcome: 'error', error: errorText(e) };
     throw e;
@@ -90,86 +108,308 @@ async function runTurn(ctx: Ctx, msg: IncomingMessage): Promise<{ outcome: TurnO
 
 async function route(ctx: Ctx, msg: IncomingMessage) {
   const text = (msg.text ?? '').trim();
-  if (await handleCommand(ctx, text)) return;
+  const command = parseCommand(text);
+  if (command && (await anytimeCommand(ctx, command))) return;
   // Nothing reaches an AI provider before the user agrees.
-  if (!ctx.user.consent_at) return handleConsent(ctx, text, msg.action);
-  if (text === '/start') return say(ctx, MSG.welcome);
-  if (isCancel(text)) {
+  if (!ctx.user.consent_at) return handleConsent(ctx, text, msg.action, command === 'start');
+  if (command === 'start') return say(ctx, MSG.welcome);
+  if (isCancel(text) || command === 'new' || command === 'cancel') {
     await ctx.deps.store.cancelConversations(ctx.user.id);
     return say(ctx, MSG.cancelled);
   }
+  if (command) return documentCommand(ctx, command);
   if (msg.unsupported) return say(ctx, MSG.unsupported);
   return converse(ctx, msg);
 }
 
-// Commands that work in every state, before consent too. True when handled.
-async function handleCommand(ctx: Ctx, text: string): Promise<boolean> {
-  if (text === '/forget') {
-    await ctx.deps.store.forgetUser(ctx.user.id);
-    await say(ctx, MSG.forgotten, { voice: false });
-    return true;
+// --- commands ---------------------------------------------------------------------
+
+// Commands that work in every state, before consent too (none calls a model).
+// True when handled.
+async function anytimeCommand(ctx: Ctx, command: string): Promise<boolean> {
+  switch (command) {
+    case 'forget':
+      await ctx.deps.store.forgetUser(ctx.user.id);
+      await say(ctx, MSG.forgotten, { voice: false });
+      return true;
+    case 'help':
+      await say(ctx, MSG.help, { voice: false });
+      return true;
+    case 'privacy':
+      await say(ctx, MSG.privacy, { voice: false });
+      return true;
+    case 'mydata':
+      await say(ctx, await myData(ctx), { voice: false });
+      return true;
+    case 'voice':
+      await toggleVoice(ctx);
+      return true;
+    default:
+      return false;
   }
-  if (text === '/help') {
-    await say(ctx, MSG.help, { voice: false });
-    return true;
-  }
-  return false;
 }
 
-async function handleConsent(ctx: Ctx, text: string, action?: string) {
+// Voice replies on/off. Sending a voice note turns them on again, typing a
+// sentence turns them off (readInput): the command is for the other cases.
+async function toggleVoice(ctx: Ctx) {
+  if (!ctx.deps.tts) return say(ctx, MSG.voiceRepliesUnavailable, { voice: false });
+  const on = !ctx.user.prefers_voice;
+  await ctx.deps.store.setPrefersVoice(ctx.user.id, on);
+  ctx.user.prefers_voice = on;
+  return say(ctx, on ? MSG.voiceOn : MSG.voiceOff);
+}
+
+// Commands about the document in progress (after consent).
+function documentCommand(ctx: Ctx, command: string) {
+  switch (command) {
+    case 'status':
+      return showStatus(ctx);
+    case 'documents':
+      return listDocuments(ctx);
+    case 'skip':
+      return skipQuestion(ctx);
+    case 'edit':
+      return editValues(ctx);
+    default:
+      return say(ctx, MSG.unknownCommand, { voice: false });
+  }
+}
+
+// The active conversation and its document (null while still choosing).
+async function loadActive(ctx: Ctx): Promise<{ conv: Conversation; doc: AgentDocument | null } | null> {
+  const conv = await ctx.deps.store.getActiveConversation(ctx.user.id);
+  if (!conv) return null;
+  const doc = conv.document_type_id ? await ctx.deps.store.getDocument(conv.document_type_id) : null;
+  return { conv, doc };
+}
+
+async function showStatus(ctx: Ctx) {
+  const active = await loadActive(ctx);
+  if (!active) return say(ctx, MSG.statusNone);
+  const { conv, doc } = active;
+  if (!doc) return say(ctx, MSG.statusChoosing);
+  const filled = doc.fields.filter((f) => f.field_key in conv.field_values).length;
+  const missing = missingFields(doc, conv).filter((f) => f.is_required).map((f) => f.label_ar);
+  return say(ctx, MSG.status(doc.name_ar, filled, doc.fields.length, missing, conv.status === 'confirming'));
+}
+
+async function listDocuments(ctx: Ctx) {
+  const catalog = await ctx.deps.store.listCatalog();
+  const active = await loadActive(ctx);
+  if (active?.doc) {
+    // Picking another document would drop the one in progress: say how to switch.
+    const list = catalog.slice(0, MAX_LISTED).map((d, i) => `${i + 1}. ${d.name_ar}`).join('\n');
+    return say(ctx, `${MSG.documentsBusy(active.doc.name_ar)}\n\n${list}`);
+  }
+  const conv = active?.conv ?? (await ctx.deps.store.createConversation(ctx.user.id));
+  ctx.conv = conv;
+  return offerDocuments(ctx, conv, catalog, catalog.slice(0, MAX_LISTED).map((d) => d.id), MSG.documentsList);
+}
+
+async function skipQuestion(ctx: Ctx) {
+  const active = await loadActive(ctx);
+  const conv = active?.conv;
+  const doc = active?.doc;
+  if (!conv || !doc || conv.status !== 'collecting') return say(ctx, MSG.nothingToSkip);
+  const asked = doc.fields.filter((f) => conv.asked_keys.includes(f.field_key) && !(f.field_key in conv.field_values));
+  const optional = asked.filter((f) => !f.is_required);
+  if (!optional.length) {
+    const required = asked.map((f) => MSG.requiredCannotSkip(f.label_ar)).join('\n');
+    return say(ctx, required || MSG.nothingToSkip);
+  }
+  ctx.conv = conv;
+  for (const f of optional) if (!conv.skipped_keys.includes(f.field_key)) conv.skipped_keys.push(f.field_key);
+  ctx.skipped = optional.map((f) => f.label_ar);
+  const errors = Object.fromEntries(asked.filter((f) => f.is_required).map((f) => [f.field_key, MSG.requiredCannotSkip(f.label_ar)]));
+  note(ctx, 'user', '/skip');
+  return askNextOrConfirm(ctx, conv, doc, errors, '');
+}
+
+// Shows what was given so far; the next message may correct any of it.
+async function editValues(ctx: Ctx) {
+  const active = await loadActive(ctx);
+  const conv = active?.conv;
+  const doc = active?.doc;
+  if (!conv || !doc || !(Object.keys(conv.field_values).length || conv.skipped_keys.length)) return say(ctx, MSG.nothingToEdit);
+  ctx.conv = conv;
+  // While collecting, only open fields are read from the next message: open the filled and skipped ones too.
+  if (conv.status === 'collecting') conv.asked_keys = [...Object.keys(conv.field_values), ...conv.skipped_keys];
+  const lines = valueLines(doc, conv);
+  const skipped = doc.fields.filter((f) => conv.skipped_keys.includes(f.field_key)).map((f) => f.label_ar);
+  const parts = [lines ? `${MSG.editIntro}\n\n${lines}` : '', skipped.length ? MSG.editSkipped(skipped) : '', MSG.whatToEdit];
+  const text = parts.filter(Boolean).join('\n\n');
+  note(ctx, 'bot', text);
+  await persist(ctx, conv);
+  return say(ctx, text, { noted: true });
+}
+
+// Right of access (law 09-08): what is stored about the user, without calling a model.
+async function myData(ctx: Ctx): Promise<string> {
+  const { store } = ctx.deps;
+  const parts: string[] = [];
+  const profile = await store.getProfile(ctx.user.id);
+  const saved = Object.entries(profile)
+    .filter(([, value]) => value)
+    .map(([key, value]) => `• ${PROFILE_LABELS[key] ?? key}: ${value}`);
+  if (saved.length) parts.push(`${MSG.mydataProfile}\n${saved.join('\n')}`);
+  const active = ctx.user.consent_at ? await loadActive(ctx) : null;
+  if (active?.doc && Object.keys(active.conv.field_values).length) {
+    parts.push(`${MSG.mydataCurrent(active.doc.name_ar)}\n${valueLines(active.doc, active.conv)}`);
+  }
+  if (!parts.length) return MSG.mydataEmpty;
+  return `${parts.join('\n\n')}\n\n${MSG.mydataForget}`;
+}
+
+async function handleConsent(ctx: Ctx, text: string, action: string | undefined, isStart: boolean) {
   if (action === 'consent:yes' || (text && isYes(text))) {
     await ctx.deps.store.setConsent(ctx.user.id);
     return say(ctx, MSG.welcome);
   }
   const buttons = [[{ label: MSG.consentButton, action: 'consent:yes' }]];
-  return say(ctx, text === '/start' ? MSG.consent : `${MSG.consentNeeded}\n\n${MSG.consent}`, { buttons });
+  return say(ctx, isStart ? MSG.consent : `${MSG.consentNeeded}\n\n${MSG.consent}`, { buttons });
+}
+
+// --- memory ---------------------------------------------------------------------
+
+// Adds a line to the conversation's history (saved with the conversation).
+function note(ctx: Ctx, role: 'user' | 'bot', text: string) {
+  if (!ctx.conv) return;
+  ctx.conv.history = remember(ctx.conv.history, role, text);
+  ctx.historyVersion++;
+}
+
+async function persist(ctx: Ctx, conv: Conversation) {
+  await ctx.deps.store.saveConversation(conv);
+  if (conv === ctx.conv) ctx.savedVersion = ctx.historyVersion;
+}
+
+// Saves history added after the last save (e.g. a reply sent without a state change).
+async function flushHistory(ctx: Ctx) {
+  const conv = ctx.conv;
+  if (!conv || ctx.historyVersion === ctx.savedVersion || conv.status === 'done' || conv.status === 'cancelled') return;
+  await persist(ctx, conv);
+}
+
+function recentHistory(ctx: Ctx): string {
+  // The latest user message is sent to the model on its own.
+  return historyForPrompt(ctx.conv?.history, { skipLast: true });
+}
+
+async function persona(ctx: Ctx): Promise<string> {
+  if (ctx.persona === undefined) {
+    const saved = await ctx.deps.store.getSetting('system_prompt').catch(() => '');
+    ctx.persona = saved.trim() || ctx.deps.systemPrompt?.trim() || '';
+  }
+  return ctx.persona;
 }
 
 async function converse(ctx: Ctx, msg: IncomingMessage) {
   const { store } = ctx.deps;
-  const input = await readInput(ctx, msg);
+  const active = await store.getActiveConversation(ctx.user.id);
+  const input = await readInput(ctx, msg, active);
   if (!input) return;
 
-  const active = await store.getActiveConversation(ctx.user.id);
   const conv = active ?? (await store.createConversation(ctx.user.id));
   ctx.trace.conv = conv;
   ctx.trace.stateBefore = active ? conv.status : 'new';
-  if (conv.status === 'choosing') return choosing(ctx, conv, input, msg.action);
+  ctx.conv = conv;
+  note(ctx, 'user', [input.text, input.image ? IMAGE_MARKER : ''].filter(Boolean).join(' '));
+  await dispatch(ctx, conv, input, msg.action);
+  await flushHistory(ctx);
+}
+
+async function dispatch(ctx: Ctx, conv: Conversation, input: Input, action?: string) {
+  const { store } = ctx.deps;
+  if (conv.status === 'choosing') return choosing(ctx, conv, input, action);
 
   const doc = conv.document_type_id ? await store.getDocument(conv.document_type_id) : null;
   if (!doc) {
     // The document was unpublished or deleted meanwhile: start over.
     Object.assign(conv, { status: 'choosing', document_type_id: null, field_values: {}, field_summaries: {}, skipped_keys: [], asked_keys: [] });
-    return choosing(ctx, conv, input, msg.action);
+    return choosing(ctx, conv, input, action);
   }
   if (conv.status === 'collecting') return collecting(ctx, conv, doc, input);
-  return confirming(ctx, conv, doc, input, msg.action);
+  return confirming(ctx, conv, doc, input, action);
 }
 
 // Text of the message, with voice notes transcribed. Replies in the same
 // form the user last used (voice ↔ text). Null when nothing usable came in.
-async function readInput(ctx: Ctx, msg: IncomingMessage): Promise<Input | null> {
-  const { store, stt } = ctx.deps;
+async function readInput(ctx: Ctx, msg: IncomingMessage, active: Conversation | null): Promise<Input | null> {
+  const { store } = ctx.deps;
   let text = (msg.text ?? '').trim();
+  if (msg.audioTooLong) {
+    await say(ctx, MSG.voiceTooLong(Math.floor(MAX_VOICE_SECONDS / 60)));
+    return null;
+  }
   if (msg.audio) {
-    if (!stt) {
-      await say(ctx, MSG.voiceNotSupported, { voice: false });
-      return null;
-    }
-    await ctx.deps.channel.showActivity(ctx.chatId, 'typing');
-    text = await stt.transcribe(msg.audio.data, msg.audio.mime, msg.audio.seconds);
+    const heard = await transcribe(ctx, msg.audio, active);
+    if (heard === null) return null;
+    text = heard;
     if (!ctx.user.prefers_voice) await store.setPrefersVoice(ctx.user.id, true);
     ctx.user.prefers_voice = true;
     if (!text) {
       await say(ctx, MSG.emptyTranscript);
       return null;
     }
-  } else if (text && ctx.user.prefers_voice) {
+    // What was understood, so a misheard name or number is seen at once (not spoken, not in the history).
+    await say(ctx, MSG.heard(clipTranscript(text)), { voice: false, noted: true });
+  } else if (text && ctx.user.prefers_voice && switchesToText(text)) {
     await store.setPrefersVoice(ctx.user.id, false);
     ctx.user.prefers_voice = false;
   }
   if (!text && !msg.image && !msg.action) return null;
   return { text, image: msg.image };
+}
+
+// The transcript ('' when nothing was heard), or null when the user was
+// already told why there is none (no transcriber, or it failed).
+async function transcribe(ctx: Ctx, audio: NonNullable<IncomingMessage['audio']>, active: Conversation | null): Promise<string | null> {
+  const { stt } = ctx.deps;
+  if (!stt) {
+    await say(ctx, MSG.voiceNotSupported, { voice: false });
+    return null;
+  }
+  await ctx.deps.channel.showActivity(ctx.chatId, 'typing');
+  try {
+    return await stt.transcribe(audio.data, audio.mime, audio.seconds, await transcriptionHint(ctx, active));
+  } catch (e) {
+    // Every transcriber failed (each failure is in the telemetry): ask to resend or type.
+    console.warn('[agent] transcription failed', e);
+    await say(ctx, MSG.voiceFailed, { voice: false });
+    return null;
+  }
+}
+
+// Words the user is likely to say now, for the transcriber to spell them right:
+// the document and the fields asked (with their list values: cities...),
+// or the documents on offer while none is chosen.
+async function transcriptionHint(ctx: Ctx, conv: Conversation | null): Promise<string> {
+  const { store } = ctx.deps;
+  try {
+    const doc = conv?.document_type_id ? await store.getDocument(conv.document_type_id) : null;
+    if (!conv || !doc) return (await store.listCatalog()).map((d) => d.name_ar).join('، ');
+    const asked = doc.fields.filter((f) => conv.asked_keys.includes(f.field_key));
+    const fields = asked.length ? asked : missingFields(doc, conv).slice(0, 3);
+    const options = fields.flatMap((f) => (f.field_type === 'select' ? f.options.filter((o) => o !== OTHER_OPTION) : []));
+    return [doc.name_ar, ...fields.map((f) => f.label_ar), ...options].join('، ');
+  } catch {
+    return ''; // a hint only helps: never fail the turn for it
+  }
+}
+
+const HEARD_MAX_CHARS = 300;
+
+function clipTranscript(text: string): string {
+  return text.length > HEARD_MAX_CHARS ? `${text.slice(0, HEARD_MAX_CHARS - 1)}…` : text;
+}
+
+// A voice user who types a CIN, a phone number, an e-mail or a one-word answer
+// keeps voice replies; typing a sentence means they switched to text.
+const TYPED_SENTENCE_MIN_WORDS = 4;
+
+function switchesToText(text: string): boolean {
+  if (text.startsWith('/') || /[\d@]/.test(text)) return false;
+  return text.split(/\s+/).filter(Boolean).length >= TYPED_SENTENCE_MIN_WORDS;
 }
 
 // --- choosing the document --------------------------------------------------
@@ -190,7 +430,7 @@ async function choosing(ctx: Ctx, conv: Conversation, input: Input, action?: str
 
   await ctx.deps.channel.showActivity(ctx.chatId, 'typing');
   const catalog = await ctx.deps.store.listCatalog();
-  const intent = await detectIntent(ctx.deps.llm('fast'), input.text, catalog);
+  const intent = await detectIntent(ctx.deps.llm('fast'), input.text, catalog, { history: recentHistory(ctx), persona: await persona(ctx) });
   if (intent.document_id && intent.confidence >= INTENT_MIN_CONFIDENCE) {
     // The request that identified the document often already holds values
     // ("my neighbour Ahmed floods my flat in Settat since March...").
@@ -199,15 +439,16 @@ async function choosing(ctx: Ctx, conv: Conversation, input: Input, action?: str
   return offerDocuments(ctx, conv, catalog, intent.candidate_ids);
 }
 
-async function offerDocuments(ctx: Ctx, conv: Conversation, catalog: CatalogEntry[], candidateIds: string[]) {
+async function offerDocuments(ctx: Ctx, conv: Conversation, catalog: CatalogEntry[], candidateIds: string[], intro?: string) {
   const ids = candidateIds.length ? candidateIds : catalog.slice(0, MAX_CHOICES).map((d) => d.id);
   conv.candidate_ids = ids;
-  await ctx.deps.store.saveConversation(conv);
   const names = ids.map((id) => catalog.find((d) => d.id === id)?.name_ar ?? '');
   const list = names.map((name, i) => `${i + 1}. ${name}`).join('\n');
   const buttons: Button[][] = ids.map((id, i) => [{ label: `${i + 1}. ${names[i]}`, action: `doc:${id}` }]);
-  const intro = candidateIds.length ? MSG.chooseDocument : MSG.noMatch;
-  return say(ctx, `${intro}\n${list}`, { buttons });
+  const text = `${intro ?? (candidateIds.length ? MSG.chooseDocument : MSG.noMatch)}\n${list}`;
+  note(ctx, 'bot', text);
+  await persist(ctx, conv);
+  return say(ctx, text, { buttons, noted: true });
 }
 
 async function startDocument(ctx: Ctx, conv: Conversation, docId: string, input: Input) {
@@ -226,7 +467,7 @@ async function prefillFromProfile(ctx: Ctx, conv: Conversation, doc: AgentDocume
   for (const [attr, key] of entries) {
     const field = doc.fields.find((f) => f.field_key === key);
     const value = profile[attr];
-    if (field && value && !validateField(field, value)) conv.field_values[key] = value;
+    if (field && value && !validateForBot(field, value)) conv.field_values[key] = value;
   }
 }
 
@@ -255,7 +496,16 @@ async function extract(ctx: Ctx, doc: AgentDocument, fields: TemplateField[], as
   }
   if (!input.text && !image) return null;
   await ctx.deps.channel.showActivity(ctx.chatId, 'typing');
-  return extractFields(llm, { text: input.text, image, documentName: doc.name_ar, fields, askedKeys, today: today(ctx) });
+  return extractFields(llm, {
+    text: input.text,
+    image,
+    documentName: doc.name_ar,
+    fields,
+    askedKeys,
+    today: today(ctx),
+    history: recentHistory(ctx),
+    persona: await persona(ctx),
+  });
 }
 
 // Validates extracted values with the web app's validators and stores the
@@ -267,26 +517,38 @@ async function apply(ctx: Ctx, conv: Conversation, doc: AgentDocument, result: E
     const field = doc.fields.find((f) => f.field_key === key);
     if (!field) continue;
     const value = normalizeValue(field, raw);
-    const error = validateField(field, value);
+    const error = validateForBot(field, value);
     if (error) errors[key] = error;
     else if (field.field_type === 'text') longTexts.push({ field, value });
     else conv.field_values[key] = value;
     if (!error) conv.skipped_keys = conv.skipped_keys.filter((k) => k !== key);
   }
+  const style = longTexts.length ? await persona(ctx) : '';
   const rewritten = await Promise.all(
-    longTexts.map(({ field, value }) => rewriteFormal(ctx.deps.llm('main'), field.label_ar, doc.name_ar, value)),
+    longTexts.map(({ field, value }) => rewriteFormal(ctx.deps.llm('main'), field.label_ar, doc.name_ar, value, { persona: style })),
   );
   longTexts.forEach(({ field }, i) => {
     conv.field_values[field.field_key] = rewritten[i].formal_ar;
     conv.field_summaries[field.field_key] = rewritten[i].darija_summary;
   });
-  for (const key of result.skipped) {
+  ctx.skipped = applySkipped(conv, doc, result.skipped, errors);
+  return errors;
+}
+
+// Optional fields the user declined are skipped; a required one cannot be.
+// Returns the labels of the fields newly skipped.
+function applySkipped(conv: Conversation, doc: AgentDocument, skipped: string[], errors: Record<string, string>): string[] {
+  const labels: string[] = [];
+  for (const key of skipped) {
     const field = doc.fields.find((f) => f.field_key === key);
     if (!field || key in conv.field_values) continue;
     if (field.is_required) errors[key] = MSG.requiredCannotSkip(field.label_ar);
-    else if (!conv.skipped_keys.includes(key)) conv.skipped_keys.push(key);
+    else if (!conv.skipped_keys.includes(key)) {
+      conv.skipped_keys.push(key);
+      labels.push(field.label_ar);
+    }
   }
-  return errors;
+  return labels;
 }
 
 export function missingFields(doc: AgentDocument, conv: Conversation): TemplateField[] {
@@ -310,21 +572,35 @@ export function nextBatch(missing: TemplateField[], errors: Record<string, strin
 
 async function askNextOrConfirm(ctx: Ctx, conv: Conversation, doc: AgentDocument, errors: Record<string, string>, lastText: string) {
   const missing = missingFields(doc, conv);
+  // Skipping an optional field is fine, but the user is told it can still be added.
+  const skippedNote = ctx.skipped?.length ? MSG.skippedCanAdd(ctx.skipped) : '';
+  ctx.skipped = [];
   if (!missing.length) {
     conv.status = 'confirming';
     conv.asked_keys = [];
-    await ctx.deps.store.saveConversation(conv);
+    if (skippedNote) await say(ctx, skippedNote);
     return sendSummary(ctx, conv, doc);
   }
   const batch = nextBatch(missing, errors, ctx.user.prefers_voice);
   conv.asked_keys = batch.map((f) => f.field_key);
-  await ctx.deps.store.saveConversation(conv);
-  return say(ctx, await question(ctx, batch, errors, lastText));
+  // Phrase the question first, so it is saved in the history with the state.
+  const asked = await question(ctx, batch, errors, lastText);
+  const text = skippedNote ? `${skippedNote}\n\n${asked}` : asked;
+  note(ctx, 'bot', text);
+  await persist(ctx, conv);
+  return say(ctx, text, { noted: true });
 }
 
 async function question(ctx: Ctx, fields: TemplateField[], errors: Record<string, string>, lastText: string): Promise<string> {
   try {
-    const text = await phraseQuestion(ctx.deps.llm('fast'), { fields, errors, lastUserMessage: lastText, voice: ctx.user.prefers_voice });
+    const text = await phraseQuestion(ctx.deps.llm('fast'), {
+      fields,
+      errors,
+      lastUserMessage: lastText,
+      voice: ctx.user.prefers_voice,
+      history: recentHistory(ctx),
+      persona: await persona(ctx),
+    });
     if (text) return text;
   } catch (e) {
     console.warn('[agent] phraseQuestion failed, using fixed wording', e);
@@ -353,9 +629,17 @@ function spokenValue(field: TemplateField, value: string, summary?: string): str
   return displayValue(field, value);
 }
 
+// "• label: value" for every field given so far.
+function valueLines(doc: AgentDocument, conv: Conversation): string {
+  return doc.fields
+    .filter((f) => f.field_key in conv.field_values)
+    .map((f) => `• ${f.label_ar}: ${displayValue(f, conv.field_values[f.field_key])}`)
+    .join('\n');
+}
+
 export function buildSummary(doc: AgentDocument, conv: Conversation): { text: string; spoken: string } {
   const filled = doc.fields.filter((f) => f.field_key in conv.field_values);
-  const text = filled.map((f) => `• ${f.label_ar}: ${displayValue(f, conv.field_values[f.field_key])}`).join('\n');
+  const text = valueLines(doc, conv);
   const spoken = filled
     .map((f) => `${f.label_ar}: ${spokenValue(f, conv.field_values[f.field_key], conv.field_summaries[f.field_key])}`)
     .join('. ');
@@ -365,10 +649,13 @@ export function buildSummary(doc: AgentDocument, conv: Conversation): { text: st
   };
 }
 
+// Saves the conversation (with the summary in its history) and sends the summary.
 async function sendSummary(ctx: Ctx, conv: Conversation, doc: AgentDocument) {
   const { text, spoken } = buildSummary(doc, conv);
   const buttons = [[{ label: MSG.confirmYes, action: 'confirm:yes' }], [{ label: MSG.confirmEdit, action: 'confirm:edit' }]];
-  return say(ctx, text, { buttons, spoken });
+  note(ctx, 'bot', text);
+  await persist(ctx, conv);
+  return say(ctx, text, { buttons, spoken, noted: true });
 }
 
 async function confirming(ctx: Ctx, conv: Conversation, doc: AgentDocument, input: Input, action?: string) {
@@ -381,8 +668,10 @@ async function confirming(ctx: Ctx, conv: Conversation, doc: AgentDocument, inpu
   const errors = await apply(ctx, conv, doc, result);
   if (Object.keys(errors).length) {
     const fields = doc.fields.filter((f) => errors[f.field_key]);
-    await ctx.deps.store.saveConversation(conv);
-    return say(ctx, await question(ctx, fields, errors, input.text));
+    const text = await question(ctx, fields, errors, input.text);
+    note(ctx, 'bot', text);
+    await persist(ctx, conv);
+    return say(ctx, text, { noted: true });
   }
   if (!Object.keys(result.values).length && !result.skipped.length) return say(ctx, MSG.whatToEdit);
   return askNextOrConfirm(ctx, conv, doc, {}, input.text);
@@ -403,7 +692,7 @@ async function generate(ctx: Ctx, conv: Conversation, doc: AgentDocument) {
 
   conv.status = 'done';
   conv.asked_keys = [];
-  await store.saveConversation(conv);
+  await persist(ctx, conv);
   await store.logGenerated(doc.id, `agent:${ctx.user.channel}:${ctx.user.id}`, conv.field_values);
   await saveProfile(ctx, conv, doc);
 
@@ -427,15 +716,32 @@ function today(ctx: Ctx): string {
   return ctx.deps.today ? ctx.deps.today() : new Date().toISOString().slice(0, 10);
 }
 
-// Emoji (with their variation selector), bullets and /commands are not read aloud.
-function forSpeech(text: string): string {
-  return text.replaceAll(/\p{Extended_Pictographic}️?|•/gu, '').replaceAll(/\/\w+/g, '').trim();
+// Emoji (with their variation selector), bullets, links, markup and /commands
+// are not read aloud. A long text is cut at a sentence end: voice notes stay
+// short, and TTS services cap their input.
+export const MAX_SPOKEN_CHARS = 1200;
+const SENTENCE_END_RE = /[.!؟?\n]/g;
+
+export function forSpeech(text: string, max = MAX_SPOKEN_CHARS): string {
+  const clean = text
+    .replaceAll(/https?:\/\/\S+/g, '')
+    .replaceAll(/\p{Extended_Pictographic}️?|[•*_#`]/gu, '')
+    .replaceAll(/\/\w+/g, '')
+    .replaceAll(/[ \t]+/g, ' ')
+    .trim();
+  if (clean.length <= max) return clean;
+  const head = clean.slice(0, max);
+  const ends = [...head.matchAll(SENTENCE_END_RE)].map((m) => m.index ?? 0);
+  const cut = ends.at(-1);
+  return cut && cut > max / 2 ? head.slice(0, cut + 1).trim() : `${head.trim()}…`;
 }
 
 // Always sends text (screen readers, records); adds a voice note when the
-// user talks to the bot by voice and a TTS provider is configured.
-async function say(ctx: Ctx, text: string, opts: { buttons?: Button[][]; spoken?: string; voice?: boolean } = {}) {
+// user talks to the bot by voice and a TTS provider is configured. The text
+// goes into the conversation's history unless the caller already noted it.
+async function say(ctx: Ctx, text: string, opts: { buttons?: Button[][]; spoken?: string; voice?: boolean; noted?: boolean } = {}) {
   await ctx.deps.channel.sendText(ctx.chatId, text, opts.buttons);
+  if (!opts.noted) note(ctx, 'bot', text);
   const { tts } = ctx.deps;
   if (!tts || !ctx.user.prefers_voice || opts.voice === false) return;
   try {

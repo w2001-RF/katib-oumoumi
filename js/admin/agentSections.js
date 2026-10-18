@@ -527,3 +527,28 @@ function ollamaServers(probes = []) {
   ]);
   return `<h3>خوادم Ollama</h3>${table(['الخادم', 'الحالة', 'الإصدار', 'الزمن', 'في الذاكرة', 'القدرات'], rows)}`;
 }
+
+// --- 13. bot instructions (system prompt) ----------------------------------------------------------
+
+/**
+ * The admin's extra instructions for the bot (agent_settings.system_prompt).
+ * `error`: the setting could not be read (usually: migration 004 not applied).
+ */
+export function botSettingsSection({ systemPrompt = '', error = '' } = {}, max = 4000) {
+  if (error) {
+    return section('bot-settings', 'تعليمات البوت (system prompt)',
+      `<p class="small-note">${esc(error)}. نفّذ <code>supabase/migrations/004_agent_memory_settings.sql</code> في SQL Editor.</p>`);
+  }
+  return section('bot-settings', 'تعليمات البوت (system prompt)', `
+    <form class="dash-form" data-form="system-prompt">
+      <label class="wide">التعليمات
+        <textarea name="system_prompt" rows="7" maxlength="${max}" dir="auto"
+          placeholder="مثلاً: نادِ المستعمل بـ «سيدي» أو «لالة»، واستعمل جملاً قصيرة جداً.">${esc(systemPrompt)}</textarea>
+      </label>
+      <button class="btn-primary" type="submit">حفظ التعليمات</button>
+    </form>`, {
+    note: 'تُضاف إلى كل طلب يرسله البوت للنموذج: النبرة، الأسلوب، معلومات محلية. ' +
+      'لا يمكنها تغيير القواعد الثابتة (عدم اختراع المعلومات، الموافقة، صيغة الأجوبة). ' +
+      `تُطبَّق خلال دقيقة دون إعادة النشر. ${max} حرف كحد أقصى؛ اتركها فارغة للرجوع إلى السلوك الافتراضي.`,
+  });
+}

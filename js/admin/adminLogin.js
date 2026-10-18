@@ -2,13 +2,16 @@ import { icon } from '../utils/icons.js';
 import { renderHeader, attachHeaderBack } from '../ui.js';
 import { navigate } from '../router.js';
 import { adminSignIn, getCurrentSession } from '../api.js';
+import { clearExpiredNotice, EXPIRED_MESSAGE, hasExpiredNotice, takeReturnPath } from './sessionExpiry.js';
 
 export async function renderAdminLogin(container) {
+  const expired = hasExpiredNotice();
   container.innerHTML = `
     ${renderHeader({ title: 'دخول المسؤول', showBack: true })}
     <main class="app-main">
       <div class="login-wrap">
         <div class="logo">${icon('lock')}<div style="margin-top:10px;">لوحة تحكم كاتب عمومي</div></div>
+        ${expired ? `<p class="error-msg" id="login-expired">${EXPIRED_MESSAGE}</p>` : ''}
         <form id="login-form">
           <div class="field">
             <label>البريد الإلكتروني</label>
@@ -32,7 +35,8 @@ export async function renderAdminLogin(container) {
   try {
     const session = await getCurrentSession();
     if (session) {
-      navigate('/admin');
+      clearExpiredNotice();
+      navigate(takeReturnPath());
       return;
     }
   } catch { /* Supabase not configured yet — let the form show the error on submit */ }
@@ -50,7 +54,8 @@ export async function renderAdminLogin(container) {
     const password = form.password.value;
     try {
       await adminSignIn(email, password);
-      navigate('/admin');
+      clearExpiredNotice();
+      navigate(takeReturnPath());
     } catch (err) {
       console.error(err);
       errEl.textContent = 'البريد الإلكتروني أو كلمة المرور غير صحيحة';

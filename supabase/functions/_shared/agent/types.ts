@@ -1,6 +1,8 @@
 // Shapes shared by the agent modules. Field and document rows are the ones the
 // web app already reads (v_template_fields, document_types).
 
+import type { HistoryEntry } from './memory.ts';
+
 export interface TemplateField {
   field_id: string;
   field_key: string;
@@ -52,6 +54,8 @@ export interface Conversation {
   field_summaries: Record<string, string>;
   skipped_keys: string[];
   asked_keys: string[];
+  /** Last few exchanges, shown to the model as context (memory.ts; migration 004). */
+  history?: HistoryEntry[];
 }
 
 export interface IncomingMessage {
@@ -64,6 +68,8 @@ export interface IncomingMessage {
   text?: string;
   /** `seconds`: length of the voice note, when the channel says. */
   audio?: { data: Uint8Array; mime: string; seconds?: number };
+  /** A voice note too long to be transcribed (its length in seconds); not downloaded. */
+  audioTooLong?: number;
   image?: { data: Uint8Array; mime: string };
   /** A button press: "consent:yes", "doc:<uuid>", "confirm:yes", "confirm:edit". */
   action?: string;

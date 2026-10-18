@@ -21,7 +21,7 @@ import {
   type ShowTarget,
 } from './ollama.ts';
 import { OpenAICompatibleLLM } from './openaiCompatible.ts';
-import { LLMAudioSTT, OpenAICompatibleSTT, OpenAICompatibleTTS } from './speech.ts';
+import { FallbackSTT, LLMAudioSTT, OpenAICompatibleSTT, OpenAICompatibleTTS } from './speech.ts';
 import type { LLM, ModelCapabilities, SpeechToText, TextToSpeech } from './types.ts';
 
 export type EnvReader = (name: string) => string | undefined;
@@ -145,12 +145,27 @@ export function getLLM(role: Role = 'main', env: EnvReader = denoEnv, observe?: 
   return fallback ? new FallbackLLM([primary, fallback]) : primary;
 }
 
+/**
+ * Speech-to-text: the STT_* endpoint (Whisper...), then the main model when it
+ * hears audio, as a fallback when the endpoint fails (or alone without one).
+ */
 export function getSTT(env: EnvReader = denoEnv, observe?: CallObserver): SpeechToText | null {
   const model = env('STT_MODEL');
   const baseUrl = env('STT_BASE_URL');
-  if (model && baseUrl) return new OpenAICompatibleSTT(baseUrl, env('STT_API_KEY') ?? '', model, env('STT_LANGUAGE'), observe);
-  const main = getLLM('main', env, observe);
-  return main.caps.audioInput ? new LLMAudioSTT(main) : null;
+  const chain: SpeechToText[] = [];
+  if (model && baseUrl) chain.push(new OpenAICompatibleSTT(baseUrl, env('STT_API_KEY') ?? '', model, env('STT_LANGUAGE'), observe));
+  const main = mainIfConfigured(env, observe);
+  if (main?.caps.audioInput) chain.push(new LLMAudioSTT(main));
+  if (chain.length > 1) return new FallbackSTT(chain);
+  return chain[0] ?? null;
+}
+
+function mainIfConfigured(env: EnvReader, observe?: CallObserver): LLM | null {
+  try {
+    return getLLM('main', env, observe);
+  } catch {
+    return null; // no model configured: speech-to-text may still work through its own endpoint
+  }
 }
 
 export function getTTS(env: EnvReader = denoEnv, observe?: CallObserver): TextToSpeech | null {

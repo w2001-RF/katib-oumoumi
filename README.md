@@ -102,6 +102,12 @@ python3 -m http.server 8080
 ثم افتح `http://localhost:8080`. لاحظ أن `supabase-config.js` مُستثنى من Git
 (`.gitignore`) — يُولَّد تلقائياً في الإنتاج عبر GitHub Actions.
 
+### الاختبارات
+
+- **اختبارات الوحدة** (Deno): `npx deno test --config tests/deno.json --allow-env --allow-read tests supabase/functions`
+- **اختبارات المتصفح، الوظيفية وUAT** (Robot Framework، مع محاكي Supabase محلي، بلا لمس قاعدة البيانات):
+  `robot --exclude live --outputdir tests/robot/results tests/robot` — انظر [`tests/robot/README.md`](tests/robot/README.md).
+
 ---
 
 ## 4. بنية المشروع

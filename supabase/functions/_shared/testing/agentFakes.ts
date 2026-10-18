@@ -30,6 +30,7 @@ export class MemoryStore implements AgentStore {
   convs: Conversation[] = [];
   profiles = new Map<string, Record<string, string>>();
   logged: Record<string, string>[] = [];
+  settings: Record<string, string> = {};
 
   upsertUser(channel: string, externalId: string, displayName: string) {
     const id = `${channel}:${externalId}`;
@@ -57,7 +58,7 @@ export class MemoryStore implements AgentStore {
   createConversation(userId: string) {
     const c: Conversation = {
       id: `c${this.convs.length + 1}`, user_id: userId, status: 'choosing', document_type_id: null, candidate_ids: [],
-      field_values: {}, field_summaries: {}, skipped_keys: [], asked_keys: [],
+      field_values: {}, field_summaries: {}, skipped_keys: [], asked_keys: [], history: [],
     };
     this.convs.push(c);
     return Promise.resolve(structuredClone(c));
@@ -88,6 +89,9 @@ export class MemoryStore implements AgentStore {
       { id: 'doc-admin', name_ar: 'شكاية إدارية', description_ar: '', keywords: '' },
       { id: DOC.id, name_ar: DOC.name_ar, description_ar: '', keywords: 'الجار' },
     ]);
+  }
+  getSetting(key: string) {
+    return Promise.resolve(this.settings[key] ?? '');
   }
   getDocument(id: string) {
     return Promise.resolve(id === DOC.id ? DOC : null);
@@ -143,8 +147,13 @@ export const msg = (extra: Partial<IncomingMessage>): IncomingMessage => ({
 });
 
 export class FakeSTT implements SpeechToText {
-  constructor(private readonly transcript: string) {}
-  transcribe(): Promise<string> { return Promise.resolve(this.transcript); }
+  /** The hint passed with each call. */
+  hints: (string | undefined)[] = [];
+  constructor(private readonly transcript: string, private readonly fail = false) {}
+  transcribe(_audio: Uint8Array, _mime: string, _seconds?: number, hint?: string): Promise<string> {
+    this.hints.push(hint);
+    return this.fail ? Promise.reject(new Error('stt down')) : Promise.resolve(this.transcript);
+  }
 }
 
 export class FakeTTS implements TextToSpeech {

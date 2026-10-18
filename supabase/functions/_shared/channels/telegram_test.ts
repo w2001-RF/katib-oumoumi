@@ -62,11 +62,25 @@ Deno.test('parseUpdate: text, voice, photo, image document', async () => {
     const audio = await tg.parseUpdate({ update_id: 2, message: { ...base, audio: { file_id: 'a' } } });
     assertEquals(audio?.audio?.mime, 'audio/ogg');
 
+    const timed = await tg.parseUpdate({ update_id: 2, message: { ...base, voice: { file_id: 'v', duration: 25 } } });
+    assertEquals(timed?.audio?.seconds, 25);
+
     const photo = await tg.parseUpdate({ update_id: 3, message: { ...base, caption: 'هادي لاكارط', photo: [{ file_id: 's' }, { file_id: 'l' }] } });
     assertEquals([photo?.text, photo?.image?.mime], ['هادي لاكارط', 'image/jpeg']);
 
     const scan = await tg.parseUpdate({ update_id: 4, message: { ...base, document: { file_id: 'd', mime_type: 'image/png' } } });
     assertEquals(scan?.image?.mime, 'image/png');
+  });
+});
+
+Deno.test('parseUpdate: a voice note over the limit is not downloaded', async () => {
+  await withFetch(fileServer(), async (reqs) => {
+    const base = { from: { id: 42 }, chat: { id: 42, type: 'private' } };
+    const long = await new TelegramChannel('t', undefined, 60).parseUpdate({ update_id: 9, message: { ...base, voice: { file_id: 'v', duration: 61 } } });
+    assertEquals([long?.audio, long?.audioTooLong], [undefined, 61]);
+    assertEquals(reqs.length, 0, 'nothing fetched from Telegram');
+    const ok = await new TelegramChannel('t', undefined, 60).parseUpdate({ update_id: 9, message: { ...base, voice: { file_id: 'v', duration: 60 } } });
+    assertEquals(ok?.audio?.seconds, 60);
   });
 });
 
@@ -91,5 +105,16 @@ Deno.test('downloads refuse big files and failed transfers', async () => {
   });
   await withFetch((req) => (req.url.endsWith('/getFile') ? okResult({ file_path: 'x' }) : new Response('', { status: 404 })), async () => {
     await assertRejects(() => tg.download('gone'), Error, '404');
+  });
+});
+
+Deno.test('setMyCommands: the command menu, optionally per language', async () => {
+  await withFetch(() => okResult(), async (reqs) => {
+    const commands = [{ command: 'help', description: 'المساعدة' }];
+    await tg.setMyCommands(commands);
+    await tg.setMyCommands(commands, 'ar');
+    assertEquals(reqs.map((r) => method(r.url)), ['setMyCommands', 'setMyCommands']);
+    assertEquals(reqs[0].json, { commands });
+    assertEquals(reqs[1].json, { commands, language_code: 'ar' });
   });
 });

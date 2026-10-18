@@ -2,6 +2,13 @@
 // today; a WhatsApp Cloud API adapter only has to implement the same four
 // methods plus its own webhook parsing.
 
+/**
+ * Longer voice notes are not downloaded nor transcribed: the answers the bot
+ * needs are short, and transcription is paid by the minute. The user is asked
+ * to split it (MSG.voiceTooLong).
+ */
+export const MAX_VOICE_SECONDS = 180;
+
 export interface Button {
   label: string;
   action: string; // comes back as IncomingMessage.action

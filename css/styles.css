@@ -1005,6 +1005,7 @@ code.err { font-size: 0.72rem; direction: ltr; display: inline-block; max-width:
 .dash-form input { font-family: var(--font); font-size: 0.85rem; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--input-bg); color: var(--text); min-width: 0; }
 .dash-form input[readonly] { background: var(--bg); }
 .dash-form .btn-primary { padding: 10px; font-size: 0.85rem; }
+.dash-form textarea { font-family: inherit; font-size: 0.9rem; line-height: 1.8; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: inherit; min-height: 160px; resize: vertical; }
 details summary { cursor: pointer; font-size: 0.8rem; font-weight: 700; color: var(--link); margin-top: 8px; }
 .add-block { margin-top: 12px; }
 .dash-table .link-btn { font-family: var(--font); font-size: 0.78rem; padding: 2px 4px; }

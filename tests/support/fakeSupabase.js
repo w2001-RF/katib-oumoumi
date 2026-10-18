@@ -5,7 +5,7 @@
 // tests/deno.json maps the web app's CDN import of supabase-js to this file,
 // so js/supabaseClient.js gets the shared fake from createClient().
 
-const QUERY_METHODS = ['select', 'insert', 'update', 'upsert', 'delete', 'eq', 'in', 'or', 'gte', 'ilike', 'order', 'limit', 'single'];
+const QUERY_METHODS = ['select', 'insert', 'update', 'upsert', 'delete', 'eq', 'in', 'or', 'gte', 'lt', 'ilike', 'order', 'limit', 'single'];
 const WRITE_METHODS = ['insert', 'update', 'upsert', 'delete'];
 
 /** The kind of a recorded query: 'insert' | 'update' | 'upsert' | 'delete' | 'select' | 'rpc'. */

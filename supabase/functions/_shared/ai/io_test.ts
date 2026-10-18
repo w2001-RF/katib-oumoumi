@@ -6,8 +6,8 @@ import { jsonResponse, withFetch } from '../testing/fakeFetch.ts';
 import { capabilitiesFor } from './models.ts';
 import { joinUrl, OpenAICompatibleLLM, trimTrailingSlashes } from './openaiCompatible.ts';
 import { getLLM, getSTT, getTTS } from './registry.ts';
-import { LLMAudioSTT, OpenAICompatibleSTT, OpenAICompatibleTTS } from './speech.ts';
-import { LLMError } from './types.ts';
+import { clipHint, FallbackSTT, LLMAudioSTT, OpenAICompatibleSTT, OpenAICompatibleTTS } from './speech.ts';
+import { LLMError, type SpeechToText } from './types.ts';
 
 Deno.test('URL helpers', () => {
   assertEquals(trimTrailingSlashes('https://x/v1///'), 'https://x/v1');
@@ -124,6 +124,11 @@ Deno.test('speech-to-text over /audio/transcriptions', async () => {
     assertEquals(reqs[0].url, 'https://groq/v1/audio/transcriptions');
     assertEquals([reqs[0].form?.get('model'), reqs[0].form?.get('language')], ['whisper-large-v3', 'ar']);
     assertEquals((reqs[0].form?.get('file') as File).name, 'voice.ogg');
+    assertEquals(reqs[0].form?.get('prompt'), null, 'no hint, no prompt');
+  });
+  await withFetch(() => jsonResponse({ text: 'سطات' }), async (reqs) => {
+    await stt.transcribe(new Uint8Array([1]), 'audio/ogg', 3, 'شكاية، المدينة، سطات');
+    assertEquals(reqs[0].form?.get('prompt'), 'شكاية، المدينة، سطات', 'the hint is sent as Whisper\'s prompt');
   });
   await withFetch(() => jsonResponse({}), async (reqs) => {
     assertEquals(await new OpenAICompatibleSTT('https://x', '', 'w').transcribe(new Uint8Array([1]), 'audio/x-unknown'), '');
@@ -140,7 +145,26 @@ Deno.test('a model that hears audio can transcribe', async () => {
     assertEquals(await new LLMAudioSTT(llm).transcribe(new Uint8Array([1, 2]), 'audio/mpeg'), 'بغيت شكاية');
     const part = (reqs[0].json as { messages: { content: unknown }[] }).messages[1].content as { input_audio: { format: string } }[];
     assertEquals(part[0].input_audio.format, 'mp3');
+    await new LLMAudioSTT(llm).transcribe(new Uint8Array([1]), 'audio/ogg', 2, 'فاس، مكناس');
+    assertStringIncludes((reqs[1].json as { messages: { content: string }[] }).messages[0].content, 'فاس، مكناس');
   });
+});
+
+Deno.test('clipHint: spaces folded, cut at a word under the limit', () => {
+  assertEquals(clipHint(undefined), '');
+  assertEquals(clipHint('  فاس \n مكناس  '), 'فاس مكناس');
+  assertEquals(clipHint('الرباط سلا تمارة', 10), 'الرباط');
+  assertEquals(clipHint('الدارالبيضاء', 5), 'الدار', 'one long word: cut inside it');
+});
+
+Deno.test('FallbackSTT: the next transcriber takes over, the last error surfaces', async () => {
+  const failing: SpeechToText = { transcribe: () => Promise.reject(new LLMError('whisper down', 503, true)) };
+  const hints: (string | undefined)[] = [];
+  const working: SpeechToText = { transcribe: (_a, _m, _s, hint) => (hints.push(hint), Promise.resolve('سلام')) };
+  assertEquals(await new FallbackSTT([failing, working]).transcribe(new Uint8Array([1]), 'audio/ogg', 2, 'h'), 'سلام');
+  assertEquals(hints, ['h'], 'the hint goes along');
+  await assertRejects(() => new FallbackSTT([failing, failing]).transcribe(new Uint8Array([1]), 'audio/ogg'), LLMError, 'whisper down');
+  assertEquals((() => { try { new FallbackSTT([]); return 'built'; } catch { return 'refused'; } })(), 'refused');
 });
 
 Deno.test('text-to-speech over /audio/speech', async () => {
@@ -161,6 +185,10 @@ Deno.test('registry: speech providers from env, or the model itself, or none', (
   const env = (vars: Record<string, string>) => (n: string) => vars[n];
   const main = { LLM_BASE_URL: 'https://x', LLM_MODEL: 'llama-3.3-70b' };
   assertEquals(getSTT(env({ ...main, STT_BASE_URL: 'https://g', STT_MODEL: 'w' })) instanceof OpenAICompatibleSTT, true);
+  const gemini = { LLM_BASE_URL: 'https://x', LLM_MODEL: 'gemini-2.5-flash' };
+  assertEquals(getSTT(env({ ...gemini, STT_BASE_URL: 'https://g', STT_MODEL: 'w' })) instanceof FallbackSTT, true,
+    'Whisper first, the model that hears audio as a fallback');
+  assertEquals(getSTT(env({ STT_BASE_URL: 'https://g', STT_MODEL: 'w' })) instanceof OpenAICompatibleSTT, true, 'no model needed');
   assertEquals(getSTT(env({ LLM_BASE_URL: 'https://x', LLM_MODEL: 'gemini-2.5-flash' })) instanceof LLMAudioSTT, true);
   assertEquals(getSTT(env(main)), null);
   assertEquals(getTTS(env(main)), null);
