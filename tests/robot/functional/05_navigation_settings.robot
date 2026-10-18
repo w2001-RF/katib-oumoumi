@@ -24,12 +24,49 @@ The Bottom Navigation Opens Each Tab And Marks It Active
 
 Settings Rows Give Information
     Go To Route    /settings
-    Click    id=about-row
-    Toast Should Contain    كاتب عمومي — v1.0.0
-    Click    id=privacy-row
-    Toast Should Contain    لا يقوم التطبيق بجمع أي بيانات شخصية
+    Get Text    id=about-row    *=    v1.0.0
     Click    id=rate-row
     Toast Should Contain    شكراً لدعمك
+
+«About» Opens The App's Card And «OK» Closes It
+    Go To Route    /settings
+    Click    id=about-row
+    Wait For Elements State    dialog.info-dialog    visible
+    Get Text    \#info-dialog-title    ==    كاتب عمومي
+    Get Text    .info-dialog-subtitle    ==    الإصدار 1.0.0
+    Get Text    .info-dialog-body    *=    Word أو PDF
+    Get Attribute    .info-dialog-footer a    href    ==    https://t.me/KatibOumoumiBot
+    Click    .info-dialog-ok
+    Get Element Count    dialog.info-dialog    ==    0
+
+The Card Also Closes With Escape Or A Click Outside
+    Go To Route    /settings
+    Click    id=about-row
+    Wait For Elements State    dialog.info-dialog    visible
+    Keyboard Key    press    Escape
+    Get Element Count    dialog.info-dialog    ==    0
+    Click    id=about-row
+    Wait For Elements State    dialog.info-dialog    visible
+    Mouse Button    click    10    10
+    Get Element Count    dialog.info-dialog    ==    0
+
+The Privacy Policy Has Its Own Page
+    Go To Route    /settings
+    Click    id=privacy-row
+    Current Route Should Be    /privacy
+    Page Title Should Be    سياسة الخصوصية
+    Get Text    .policy-title    ==    سياسة الخصوصية — كاتب عمومي
+    Get Text    .policy-updated    *=    آخر تحديث
+    Get Element Count    .policy section    ==    9
+    Get Text    .policy    *=    09-08
+    Get Text    .policy    *=    /forget
+    Get Attribute    .policy-mail    href    ==    mailto:contact@katiboumoumi.online
+    Get Attribute    .bottom-nav [data-nav="/settings"]    class    ==    active
+    Click    [data-action="back"]
+    Current Route Should Be    /settings
+
+The Privacy Policy Is Linked From The Home Footer
+    Get Attribute    .site-footer a >> text=سياسة الخصوصية    href    ==    \#/privacy
 
 Settings Show The Contact Address And The Admin Entry
     Go To Route    /settings

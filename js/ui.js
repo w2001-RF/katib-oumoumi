@@ -76,6 +76,36 @@ export function showToast(message) {
   toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
 }
 
+/**
+ * A small modal card (native <dialog>: Esc, focus and backdrop come for free).
+ * `media`, `body` and `footer` are trusted HTML; `title` and `subtitle` are text.
+ * Removed from the page once closed. Returns the dialog.
+ */
+export function openInfoDialog({ media = '', title, subtitle = '', body = '', footer = '', okLabel = 'حسناً' }) {
+  const dialog = document.createElement('dialog');
+  dialog.className = 'info-dialog';
+  dialog.setAttribute('aria-labelledby', 'info-dialog-title');
+  // The card fills the dialog: a click on the dialog element itself is a click on the backdrop.
+  dialog.innerHTML = `<div class="info-dialog-card">
+    ${media ? `<div class="info-dialog-media">${media}</div>` : ''}
+    <h2 id="info-dialog-title"></h2>
+    ${subtitle ? '<p class="info-dialog-subtitle"></p>' : ''}
+    <div class="info-dialog-body">${body}</div>
+    ${footer ? `<div class="info-dialog-footer">${footer}</div>` : ''}
+    <form method="dialog"><button class="info-dialog-ok" value="ok" autofocus>${okLabel}</button></form>
+  </div>`;
+  dialog.querySelector('h2').textContent = title;
+  if (subtitle) dialog.querySelector('.info-dialog-subtitle').textContent = subtitle;
+  // A click on the backdrop (outside the card) closes it, like on phones.
+  dialog.addEventListener('click', (e) => {
+    if (e.target === dialog) dialog.close();
+  });
+  dialog.addEventListener('close', () => dialog.remove());
+  document.body.appendChild(dialog);
+  dialog.showModal();
+  return dialog;
+}
+
 export function loadingSpinner(dark = false) {
   return `<div class="page-loading"><div class="spinner${dark ? ' dark' : ''}"></div></div>`;
 }

@@ -51,6 +51,7 @@ function siteFooter() {
       <a href="#/categories">تصنيفات الوثائق</a>
       <a href="#/history">سجل الوثائق</a>
       <a href="#/settings">الإعدادات</a>
+      <a href="#/privacy">سياسة الخصوصية</a>
       <a href="${TELEGRAM_BOT_URL}" target="_blank" rel="noopener">بوت تيليغرام</a>
     </nav>
     <nav aria-label="شارك كاتب عمومي">

@@ -6,6 +6,7 @@ import { renderDocForm } from './views/docForm.js';
 import { renderReady } from './views/ready.js';
 import { renderHistory } from './views/history.js';
 import { renderSettings } from './views/settings.js';
+import { renderPrivacy } from './views/privacy.js';
 import { renderAdminLogin } from './admin/adminLogin.js';
 import { renderAdminDashboard } from './admin/adminDashboard.js';
 import { renderAdminCategories } from './admin/adminCategories.js';
@@ -26,6 +27,7 @@ registerRoute('/doc/:id', renderDocForm);
 registerRoute('/ready/:id', renderReady);
 registerRoute('/history', renderHistory);
 registerRoute('/settings', renderSettings);
+registerRoute('/privacy', renderPrivacy);
 
 registerRoute('/admin/login', renderAdminLogin);
 registerRoute('/admin', renderAdminDashboard);

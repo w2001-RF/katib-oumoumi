@@ -25,3 +25,7 @@ docs/diagrams/*.browser-check.json
 # Robot Framework results (tests/robot)
 tests/robot/results/
 __pycache__/
+
+
+#screenshots
+screenshots/

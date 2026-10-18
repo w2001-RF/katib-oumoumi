@@ -1,6 +1,8 @@
 import { icon } from '../utils/icons.js';
-import { renderHeader, renderBottomNav, showToast } from '../ui.js';
+import { BRAND_MARK, openInfoDialog, renderHeader, renderBottomNav, showToast } from '../ui.js';
 import { applyTheme, readThemePref } from '../theme.js';
+import { navigate } from '../router.js';
+import { APP_DESCRIPTION, APP_NAME, APP_VERSION, CONTACT_EMAIL, TELEGRAM_BOT_URL } from '../appInfo.js';
 
 const THEME_CHOICES = [
   { value: 'auto', label: 'تلقائي', iconName: 'monitor' },
@@ -8,8 +10,6 @@ const THEME_CHOICES = [
   { value: 'dark', label: 'داكن', iconName: 'moon' },
 ];
 
-const APP_VERSION = 'v1.0.0';
-const CONTACT_EMAIL = 'contact@katiboumoumi.online';
 
 export async function renderSettings(container) {
   container.innerHTML = `
@@ -25,7 +25,7 @@ export async function renderSettings(container) {
         <div class="icon-box">${icon('info')}</div>
         <div class="body">
           <p class="title">عن التطبيق</p>
-          <p class="desc">كاتب عمومي — ${APP_VERSION}</p>
+          <p class="desc">${APP_NAME} — v${APP_VERSION}</p>
         </div>
       </div>
       <div class="settings-row" id="privacy-row">
@@ -58,7 +58,7 @@ export async function renderSettings(container) {
         </div>
       </div>
 
-      <p class="settings-footer">كاتب عمومي ${APP_VERSION}</p>
+      <p class="settings-footer">${APP_NAME} v${APP_VERSION}</p>
       <p class="settings-footer" style="margin-top:-18px;">
         <a href="#/admin/login" style="color:var(--text-faint);">دخول المسؤول</a>
       </p>
@@ -74,12 +74,8 @@ export async function renderSettings(container) {
     markTheme(b.dataset.themeChoice);
   }));
 
-  container.querySelector('#about-row').addEventListener('click', () => {
-    showToast(`كاتب عمومي — ${APP_VERSION}\nتطبيق لتوليد الوثائق الإدارية المغربية`);
-  });
-  container.querySelector('#privacy-row').addEventListener('click', () => {
-    showToast('لا يقوم التطبيق بجمع أي بيانات شخصية دون علمك.');
-  });
+  container.querySelector('#about-row').addEventListener('click', showAbout);
+  container.querySelector('#privacy-row').addEventListener('click', () => navigate('/privacy'));
   container.querySelector('#rate-row').addEventListener('click', () => {
     showToast('شكراً لدعمك! (رابط المتجر غير مهيأ بعد)');
   });
@@ -96,5 +92,16 @@ export async function renderSettings(container) {
   });
   container.querySelector('#contact-row').addEventListener('click', () => {
     globalThis.location.href = `mailto:${CONTACT_EMAIL}`;
+  });
+}
+
+// «عن التطبيق»: the app's card.
+export function showAbout() {
+  return openInfoDialog({
+    media: BRAND_MARK,
+    title: APP_NAME,
+    subtitle: `الإصدار ${APP_VERSION}`,
+    body: `<p>${APP_DESCRIPTION}</p>`,
+    footer: `<a href="${TELEGRAM_BOT_URL}" target="_blank" rel="noopener">متوفر أيضاً على تيليغرام: <bdi dir="ltr">@KatibOumoumiBot</bdi></a>`,
   });
 }

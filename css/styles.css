@@ -1204,3 +1204,68 @@ details summary { cursor: pointer; font-size: 0.8rem; font-weight: 700; color: v
   }
   .form-layout .form-footer { position: static; }
 }
+
+/* --------------------------------------------------------------------------
+   "About" dialog (js/ui.js openInfoDialog) and the privacy policy page
+   -------------------------------------------------------------------------- */
+.info-dialog {
+  border: none;
+  padding: 0;
+  width: min(340px, calc(100% - 48px));
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: inset 0 0 0 3px var(--surface), inset 0 0 0 4px var(--frame), 0 18px 48px rgba(0, 0, 0, 0.28);
+}
+.info-dialog::backdrop { background: rgba(10, 20, 16, 0.55); }
+.info-dialog-card { padding: 28px 24px 14px; text-align: center; }
+.info-dialog-media {
+  width: 84px;
+  height: 84px;
+  margin: 0 auto 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.info-dialog-media .brand-mark { width: 84px; height: 84px; }
+.info-dialog h2 {
+  font-family: var(--font-display);
+  color: var(--heading);
+  font-size: 1.45rem;
+  margin: 0 0 4px;
+}
+.info-dialog-subtitle { color: var(--text-faint); font-size: 0.85rem; margin: 0 0 14px; }
+.info-dialog-body p { color: var(--text-dim); line-height: 1.9; margin: 0; }
+.info-dialog-footer { margin-top: 12px; font-size: 0.85rem; }
+.info-dialog-footer a { color: var(--link); }
+.info-dialog form { display: flex; justify-content: flex-start; margin-top: 14px; }
+.info-dialog-ok {
+  background: none;
+  border: none;
+  color: var(--link);
+  font-weight: 700;
+  font-size: 0.95rem;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.info-dialog-ok:hover { background: var(--tint); }
+
+.policy { padding: 4px 2px 24px; line-height: 1.95; }
+.policy-title { font-family: var(--font-display); color: var(--heading); font-size: 1.3rem; margin: 6px 0 2px; }
+.policy-updated { color: var(--text-faint); font-size: 0.85rem; margin: 0 0 8px; }
+.policy section { margin-top: 20px; }
+.policy h3 { color: var(--heading); font-size: 1.05rem; margin: 0 0 6px; }
+.policy p { color: var(--text-dim); margin: 0 0 8px; }
+.policy ul { margin: 0 0 8px; padding: 0 18px 0 0; color: var(--text-dim); }
+.policy li { margin-bottom: 4px; }
+.policy li::marker { color: var(--gold-500); }
+.policy a { color: var(--link); overflow-wrap: anywhere; }
+.policy-mail { font-weight: 700; direction: ltr; unicode-bidi: embed; }
+.policy-footer {
+  margin-top: 28px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  color: var(--text-faint);
+  font-size: 0.8rem;
+}
