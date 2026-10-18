@@ -214,3 +214,75 @@ Deno.test('system prompt: none set means the original instructions', async () =>
   await send({ text: 'بغيت وثيقة' });
   assert(!systemOf(llm.requests[0]).includes('Operator instructions'));
 });
+
+Deno.test('select values: French city names are stored as the Arabic option', async () => {
+  const llm = new ScriptedLLM({
+    extraction: [{ values: [{ id: 'f1', value: 'Casablanca' }], skipped: [] }],
+    question: [{ text: 'شنو سميتك؟' }],
+  });
+  const { store, user, send } = await setup(llm);
+  startIn(store, user.id, 'collecting', {}, ['المدينة']);
+  await send({ text: 'Casablanca' });
+  assertEquals(store.convs[0].field_values['المدينة'], 'الدار البيضاء');
+  assertStringIncludes(systemOf(llm.requests[0]), 'one of: سطات | الدار البيضاء', 'the model sees the options');
+});
+
+Deno.test('select values: a value outside the list is refused and the options are offered again', async () => {
+  const llm = new ScriptedLLM({
+    extraction: [{ values: [{ id: 'f1', value: 'Paris' }], skipped: [] }],
+    question: [{ text: 'اختار مدينة من اللائحة' }],
+  });
+  const { store, user, send } = await setup(llm);
+  startIn(store, user.id, 'collecting', {}, ['المدينة']);
+  await send({ text: 'Paris' });
+  assertEquals(store.convs[0].field_values, {});
+  const asked = systemOf(llm.requests[1]);
+  assertStringIncludes(asked, 'the previous answer was rejected');
+  assertStringIncludes(asked, 'options: سطات | الدار البيضاء');
+});
+
+Deno.test('optional fields: skipping is fine, and the user is told it can be added with /edit', async () => {
+  const llm = new ScriptedLLM({ question: [{ text: 'شنو سميتك؟' }] });
+  const { store, user, send, last, channel } = await setup(llm);
+  startIn(store, user.id, 'collecting', { 'المدينة': 'سطات' }, ['اسم مقدم الشكاية', 'البريد الإلكتروني']);
+  await send({ text: '/skip' });
+  assert(last().startsWith(MSG.skippedCanAdd(['البريد الإلكتروني'])), 'the reminder comes before the next question');
+  assertStringIncludes(last(), 'شنو سميتك؟');
+
+  store.convs = [];
+  channel.texts = [];
+  startIn(store, user.id, 'collecting', ALL_REQUIRED, ['البريد الإلكتروني']);
+  await send({ text: '/skip' });
+  assertEquals(channel.texts[0].text, MSG.skippedCanAdd(['البريد الإلكتروني']), 'said before the summary');
+  assertStringIncludes(last(), MSG.confirmIntro);
+});
+
+Deno.test('optional fields: declined in a message, then added back through /edit', async () => {
+  const llm = new ScriptedLLM({
+    extraction: [
+      { values: [], skipped: ['f1'] },
+      { values: [{ id: 'f5', value: 'fatima@mail.ma' }], skipped: [] },
+    ],
+  });
+  const { store, user, send, last, channel } = await setup(llm);
+  startIn(store, user.id, 'collecting', ALL_REQUIRED, ['البريد الإلكتروني']);
+  await send({ text: 'ما عنديش' });
+  assert(channel.texts.some((t) => t.text === MSG.skippedCanAdd(['البريد الإلكتروني'])));
+  assertEquals(store.convs[0].status, 'confirming');
+
+  await send({ text: '/edit' });
+  assertStringIncludes(last(), MSG.editSkipped(['البريد الإلكتروني']));
+  await send({ text: 'الإيميل ديالي fatima@mail.ma' });
+  assertEquals(store.convs[0].field_values['البريد الإلكتروني'], 'fatima@mail.ma');
+  assertEquals(store.convs[0].skipped_keys, []);
+});
+
+Deno.test('/edit while collecting: skipped fields are open to the next message too', async () => {
+  const { store, user, send, last } = await setup();
+  startIn(store, user.id, 'collecting', {}, []);
+  store.convs[0].skipped_keys = ['البريد الإلكتروني'];
+  await send({ text: '/edit' });
+  assertEquals(store.convs[0].asked_keys, ['البريد الإلكتروني']);
+  assert(!last().includes(MSG.editIntro), 'no filled values to list');
+  assertStringIncludes(last(), MSG.editSkipped(['البريد الإلكتروني']));
+});

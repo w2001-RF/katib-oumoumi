@@ -7,6 +7,9 @@ const PRIVACY =
   'الرسائل الصوتية والتصاور ما كنحتافظوش بيهم. المحادثات القديمة كتمسح من بعد 30 يوم.\n' +
   'تقدر تشوف شنو محفوظ عليك بـ /mydata، وتمسحو كامل فأي وقت بـ /forget.';
 
+const bullets = (labels: string[]) => labels.map((l) => '• ' + l).join('\n');
+const quoted = (labels: string[]) => labels.map((l) => '«' + l + '»').join(' و');
+
 function statusNext(missing: string[], confirming: boolean): string {
   if (confirming) return 'كلشي واجد، كنتسناو غير التأكيد ديالك.';
   if (missing.length) return `باقي خاصني: ${missing.join('، ')}.`;
@@ -68,6 +71,9 @@ export const MSG = {
   nothingToSkip: 'ما كاين حتى سؤال اختياري نقدرو نفوتوه دابا.',
   nothingToEdit: 'ما عندي حتى معلومة دابا باش نبدلها. قول ليا شنو الوثيقة اللي محتاج.',
   editIntro: 'هادي هي المعلومات اللي عندي حتى دابا:',
+  editSkipped: (labels: string[]) => `معلومات اختيارية ما عطيتينيش (تقدر تزيدها دابا):\n${bullets(labels)}`,
+  skippedCanAdd: (labels: string[]) =>
+    `مافيها باس، فوتنا ${quoted(labels)} حيت اختيارية. إلا بغيتي تزيدها من بعد، كتب /edit.`,
   mydataEmpty: 'ما محفوظ عندي حتى معلومة عليك.',
   mydataProfile: 'المعلومات الشخصية (كنعاودو نستعملوها فالوثائق الجاية):',
   mydataCurrent: (name: string) => `الوثيقة اللي كتوجد دابا (${name}):`,

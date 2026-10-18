@@ -2,7 +2,8 @@
 // through the web app's own validators. Models and users write numbers in
 // Arabic-Indic digits, add spaces inside phone numbers, "درهم" after amounts...
 
-import { fieldOptions } from '../../../../js/utils/validators.js';
+import { fieldOptions, validateField } from '../../../../js/utils/validators.js';
+import { arabicPlaceName, hasLatinLetters } from './places.ts';
 import type { TemplateField } from './types.ts';
 
 const ARABIC_INDIC_ZERO = 0x0660;
@@ -54,12 +55,32 @@ export function normalizeValue(field: TemplateField, raw: unknown): string {
       if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
       return v;
     }
-    case 'select': {
-      const options = fieldOptions(field) as string[];
-      // «أخرى» lets free values through; validateField decides.
-      return options.find((o) => foldArabic(o) === foldArabic(v)) ?? v;
-    }
+    case 'select':
+      return selectOption(fieldOptions(field) as string[], v);
     default:
       return v;
   }
+}
+
+// The listed option the value stands for: same Arabic spelling, or a place
+// name typed in Latin letters ("Casablanca" → «الدار البيضاء»). Otherwise the
+// value itself (in Arabic when it is a known place); validateForBot decides.
+function selectOption(options: string[], v: string): string {
+  const same = (a: string) => options.find((o) => foldArabic(o) === foldArabic(a));
+  const place = arabicPlaceName(v);
+  return same(v) ?? (place ? same(place) ?? place : v);
+}
+
+export const LATIN_NOT_ALLOWED = 'عافاك كتب هاد المعلومة بالحروف العربية، ولا اختار من اللائحة.';
+
+/**
+ * The web app's validation, plus one rule for the bot: a select value that is
+ * not one of the options (allowed by «أخرى») must be written in Arabic.
+ * Returns the error message, or null.
+ */
+export function validateForBot(field: TemplateField, value: string): string | null {
+  const error = validateField(field, value);
+  if (error || field.field_type !== 'select' || !value) return error;
+  const listed = (fieldOptions(field) as string[]).includes(value);
+  return !listed && hasLatinLetters(value) ? LATIN_NOT_ALLOWED : null;
 }
