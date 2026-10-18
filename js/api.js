@@ -120,9 +120,10 @@ export async function adminSignIn(email, password) {
   return data;
 }
 
-export async function adminSignOut() {
+/** `scope: 'local'` only forgets the session in this browser (used when it already expired). */
+export async function adminSignOut({ scope = 'global' } = {}) {
   assertClient();
-  await supabase.auth.signOut();
+  await supabase.auth.signOut({ scope });
 }
 
 export async function getCurrentSession() {

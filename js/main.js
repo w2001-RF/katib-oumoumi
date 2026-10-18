@@ -1,4 +1,4 @@
-import { registerRoute, initRouter, renderCurrentRoute } from './router.js';
+import { currentPath, initRouter, navigate, registerRoute, renderCurrentRoute } from './router.js';
 import { renderHome } from './views/home.js';
 import { renderCategories } from './views/categories.js';
 import { renderCategoryDetail } from './views/categoryDetail.js';
@@ -11,7 +11,10 @@ import { renderAdminDashboard } from './admin/adminDashboard.js';
 import { renderAdminCategories } from './admin/adminCategories.js';
 import { renderAdminDocTypeEditor } from './admin/adminDocTypeEditor.js';
 import { renderAdminAgents } from './admin/adminAgents.js';
-import { supabaseReady } from './supabaseClient.js';
+import { installSessionExpiryHandler } from './admin/sessionExpiry.js';
+import { adminSignOut } from './api.js';
+import { SESSION_EXPIRED_EVENT, supabaseReady } from './supabaseClient.js';
+import { showToast } from './ui.js';
 
 registerRoute('/', renderHome);
 registerRoute('/categories', renderCategories);
@@ -32,6 +35,14 @@ const app = document.getElementById('app');
 
 if (supabaseReady) {
   initRouter(app);
+  // Admin session expired and could not be refreshed: back to the login page.
+  installSessionExpiryHandler({
+    eventName: SESSION_EXPIRED_EVENT,
+    currentPath,
+    navigate,
+    toast: showToast,
+    signOut: () => adminSignOut({ scope: 'local' }),
+  });
   try {
     await renderCurrentRoute();
   } catch (e) {
