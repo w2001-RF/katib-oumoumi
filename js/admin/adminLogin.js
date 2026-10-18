@@ -2,10 +2,10 @@ import { icon } from '../utils/icons.js';
 import { renderHeader, attachHeaderBack } from '../ui.js';
 import { navigate } from '../router.js';
 import { adminSignIn, getCurrentSession } from '../api.js';
-import { EXPIRED_MESSAGE, takeExpiredNotice, takeReturnPath } from './sessionExpiry.js';
+import { clearExpiredNotice, EXPIRED_MESSAGE, hasExpiredNotice, takeReturnPath } from './sessionExpiry.js';
 
 export async function renderAdminLogin(container) {
-  const expired = takeExpiredNotice();
+  const expired = hasExpiredNotice();
   container.innerHTML = `
     ${renderHeader({ title: 'دخول المسؤول', showBack: true })}
     <main class="app-main">
@@ -35,6 +35,7 @@ export async function renderAdminLogin(container) {
   try {
     const session = await getCurrentSession();
     if (session) {
+      clearExpiredNotice();
       navigate(takeReturnPath());
       return;
     }
@@ -53,6 +54,7 @@ export async function renderAdminLogin(container) {
     const password = form.password.value;
     try {
       await adminSignIn(email, password);
+      clearExpiredNotice();
       navigate(takeReturnPath());
     } catch (err) {
       console.error(err);

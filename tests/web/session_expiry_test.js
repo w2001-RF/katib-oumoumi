@@ -2,7 +2,7 @@ import '../support/setup.js';
 import { assert, assertEquals } from 'jsr:@std/assert@1';
 import { createAuthAwareFetch, isExpiredJwt } from '../../js/authFetch.js';
 import {
-  EXPIRED_MESSAGE, handleSessionExpired, installSessionExpiryHandler, isAdminPath, rememberReturnPath, takeExpiredNotice,
+  clearExpiredNotice, EXPIRED_MESSAGE, hasExpiredNotice, handleSessionExpired, installSessionExpiryHandler, isAdminPath, rememberReturnPath,
   takeReturnPath,
 } from '../../js/admin/sessionExpiry.js';
 import { connectSupabase, SESSION_EXPIRED_EVENT } from '../../js/supabaseClient.js';
@@ -56,6 +56,16 @@ Deno.test('authFetch: no session to refresh → reported, the 401 is returned', 
   assertEquals(expired, 1);
 });
 
+Deno.test('authFetch: with the anon key, a request whose session is gone is replayed as a visitor', async () => {
+  const { fetch, auth } = scriptedFetch([EXPIRED, () => json(200, [])]);
+  let expired = 0;
+  const f = createAuthAwareFetch({ baseFetch: fetch, refresh: () => null, onExpired: () => expired++, anonKey: 'anon' });
+  const res = await f('https://x/rest/v1/categories', { headers: { Authorization: 'Bearer dead' } });
+  assertEquals(res.status, 200, 'public pages keep working');
+  assertEquals(auth, ['Bearer dead', 'Bearer anon']);
+  assertEquals(expired, 1, 'the admin is still sent to the login page');
+});
+
 Deno.test('authFetch: other responses and auth endpoints are passed through', async () => {
   const { fetch, urls } = scriptedFetch([
     () => json(200, {}),
@@ -95,7 +105,7 @@ Deno.test('connectSupabase: the client gets the auth-aware fetch, wired to refre
     options = opts;
     return client;
   };
-  const { fetch, auth } = scriptedFetch([EXPIRED, () => json(200, {}), EXPIRED]);
+  const { fetch, auth } = scriptedFetch([EXPIRED, () => json(200, {}), EXPIRED, () => json(403, { code: '42501' })]);
   connectSupabase({ url: 'https://x.supabase.co', anonKey: 'k' }, { create, baseFetch: fetch });
   assertEquals((await options.global.fetch('https://x/rest/v1/a', {})).status, 200);
   assertEquals(auth.at(-1), 'Bearer fresh');
@@ -105,7 +115,8 @@ Deno.test('connectSupabase: the client gets the auth-aware fetch, wired to refre
   const listener = () => fired++;
   globalThis.addEventListener(SESSION_EXPIRED_EVENT, listener);
   try {
-    assertEquals((await options.global.fetch('https://x/rest/v1/a', {})).status, 401);
+    assertEquals((await options.global.fetch('https://x/rest/v1/a', {})).status, 403, 'replayed as a visitor: RLS decides');
+    assertEquals(auth.at(-1), 'Bearer k');
     assertEquals(fired, 1, 'the app is told the session is gone');
   } finally {
     globalThis.removeEventListener(SESSION_EXPIRED_EVENT, listener);
@@ -125,8 +136,10 @@ Deno.test('sessionExpiry: admin pages go to the login page and come back after s
   assertEquals(toasts, [EXPIRED_MESSAGE]);
   assertEquals(signedOut, 1, 'a failed sign out does not stop the redirect');
 
-  assertEquals(takeExpiredNotice(storage), true);
-  assertEquals(takeExpiredNotice(storage), false, 'shown once');
+  assertEquals(hasExpiredNotice(storage), true);
+  assertEquals(hasExpiredNotice(storage), true, 'kept while the login page may be drawn again');
+  clearExpiredNotice(storage);
+  assertEquals(hasExpiredNotice(storage), false, 'cleared once signed in');
   assertEquals(takeReturnPath(storage), '/admin/agents');
   assertEquals(takeReturnPath(storage), '/admin', 'forgotten once used');
 
@@ -146,7 +159,8 @@ Deno.test('sessionExpiry: only admin paths are remembered; storage errors are ig
   const broken = { getItem: () => { throw new Error('blocked'); }, setItem: () => { throw new Error('blocked'); }, removeItem: () => { throw new Error('blocked'); } };
   rememberReturnPath('/admin/agents', broken);
   assertEquals(takeReturnPath(broken), '/admin');
-  assertEquals(takeExpiredNotice(broken), false);
+  assertEquals(hasExpiredNotice(broken), false);
+  clearExpiredNotice(broken);
   assertEquals(takeReturnPath(null), '/admin');
 });
 

@@ -1,0 +1,56 @@
+name: Robot Framework (functional + UAT)
+
+# Browser tests of the whole app against a local Supabase mock
+# (tests/robot/mock): no secret needed, nothing written to the real database.
+# The read-only smoke test of the live site runs only on demand.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      live:
+        description: Also run the read-only smoke test of https://katiboumoumi.online
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  robot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: tests/robot/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Robot Framework and the Browser library
+        run: |
+          pip install -r tests/robot/requirements.txt
+          rfbrowser init chromium
+
+      - name: Functional and UAT suites (mocked Supabase)
+        run: robot --exclude live --outputdir tests/robot/results tests/robot
+
+      - name: Live smoke test (read only)
+        if: ${{ inputs.live }}
+        run: robot --include live --outputdir tests/robot/results/live tests/robot/uat
+
+      - name: Upload the report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: robot-report
+          path: tests/robot/results
+          retention-days: 14

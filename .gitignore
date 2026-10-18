@@ -21,3 +21,7 @@ docs/diagrams/*.finalize-summary.json
 docs/diagrams/*.delivery.json
 docs/diagrams/*.browser-check.json
 .archify/
+
+# Robot Framework results (tests/robot)
+tests/robot/results/
+__pycache__/

@@ -23,6 +23,7 @@ export function connectSupabase(config, { create = createClient, log = console, 
       return error ? null : data?.session?.access_token ?? null;
     },
     onExpired: () => globalThis.dispatchEvent?.(new Event(SESSION_EXPIRED_EVENT)),
+    anonKey: config.anonKey,
   });
   client = create(config.url, config.anonKey, { global: { fetch } });
   return { ready, client };
