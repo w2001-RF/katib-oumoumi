@@ -26,7 +26,14 @@ function fakeApis(url: string): Response {
   if (url.startsWith('https://generativelanguage.googleapis.com')) return jsonResponse({ data: [{ id: 'models/gemini-2.0-flash' }] });
   if (url === 'https://openrouter.ai/api/v1/models') return jsonResponse({ data: [{ id: 'meta-llama/llama-3.3-70b-instruct:free' }] });
   if (url === 'https://openrouter.ai/api/v1/key') return jsonResponse({ data: { limit: 10, usage: 2.5, limit_remaining: 7.5, is_free_tier: false } });
-  if (url.startsWith('https://api.groq.com')) return new Response('{"error":"invalid api key"}', { status: 401 });
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === 'https:' && parsed.hostname === 'api.groq.com') {
+      return new Response('{"error":"invalid api key"}', { status: 401 });
+    }
+  } catch {
+    // Ignore malformed URL in test stub and fall through to default response.
+  }
   return new Response('?', { status: 500 });
 }
 
