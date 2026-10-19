@@ -12,6 +12,7 @@
   --surface-2: #eeebe1;
   --input-bg: #ffffff;
   --border: #e4dfd0;
+  --field-border: #8f8978;    /* 3:1 on white and on --bg: a field's edge must be seen */
   --frame: #d9cfb4;           /* the thin gold line framing cards */
   --text: #1b1a17;
   --text-dim: #6b665a;
@@ -69,6 +70,7 @@
     --surface-2: #1d2723;
     --input-bg: #111815;
     --border: #2a3530;
+    --field-border: #66716b;
     --frame: #3f3a2a;
     --text: #ece6d6;
     --text-dim: #a8a191;
@@ -109,6 +111,7 @@
   --surface-2: #1d2723;
   --input-bg: #111815;
   --border: #2a3530;
+  --field-border: #66716b;
   --frame: #3f3a2a;
   --text: #ece6d6;
   --text-dim: #a8a191;
@@ -165,8 +168,12 @@ button { font-family: var(--font); }
 
 img, svg { display: block; }
 
+/* The focus ring needs 3:1 on what it sits on: dark gold on paper,
+   light gold on the green bars. */
+:root { --focus-ring: var(--gold-600); }
+.app-header, .hero-banner { --focus-ring: var(--gold-400); }
 :focus-visible {
-  outline: 2px solid var(--gold-500);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -305,7 +312,7 @@ img, svg { display: block; }
   align-items: center;
   gap: 8px;
   background: var(--input-bg);
-  border: 1px solid var(--frame);
+  border: 1px solid var(--field-border);
   border-radius: var(--radius-md);
   padding: 10px 14px;
   margin-bottom: 16px;
@@ -313,14 +320,15 @@ img, svg { display: block; }
 }
 .search-bar input {
   border: none;
-  outline: none;
+  outline: none; /* the bar shows the focus instead */
   flex: 1;
   font-family: var(--font);
-  font-size: 0.95rem;
+  font-size: 1rem; /* under 16px, iOS Safari zooms the page on focus */
   background: transparent;
   color: var(--text);
 }
 .search-bar input::placeholder { color: var(--text-faint); }
+.search-bar:focus-within { border-color: var(--gold-600); box-shadow: 0 0 0 3px var(--gold-100); }
 
 /* Hero banner ---------------------------------------------------------------*/
 .hero-banner {
@@ -480,17 +488,17 @@ img, svg { display: block; }
 .field textarea,
 .field select {
   width: 100%;
-  border: 1px solid var(--border);
+  border: 1px solid var(--field-border);
   background: var(--input-bg);
   border-radius: var(--radius-sm);
   padding: 12px 14px;
   font-family: var(--font);
-  font-size: 0.92rem;
+  font-size: 1rem; /* under 16px, iOS Safari zooms the page on focus */
   color: var(--text);
 }
 .field input::placeholder, .field textarea::placeholder { color: var(--text-faint); }
 .field input:focus, .field textarea:focus, .field select:focus {
-  border-color: var(--gold-500);
+  border-color: var(--gold-600);
   outline: none;
   box-shadow: 0 0 0 3px var(--gold-100);
 }
@@ -872,19 +880,19 @@ hr.sep { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--field-border);
   background: var(--input-bg);
   border-radius: var(--radius-sm);
   padding: 12px 14px;
   font-family: var(--font);
-  font-size: 0.92rem;
+  font-size: 1rem;
   color: var(--text);
   text-align: start;
   cursor: pointer;
 }
 .combo-trigger svg { flex-shrink: 0; color: var(--text-dim); transition: transform 0.15s; }
 .combo-value.is-placeholder { color: var(--text-faint); }
-.combo.open .combo-trigger { border-color: var(--gold-500); }
+.combo.open .combo-trigger { border-color: var(--gold-600); }
 .combo.open .combo-trigger svg { transform: rotate(180deg); }
 .field.has-error .combo-trigger { border-color: var(--danger); }
 .combo-panel {
@@ -903,7 +911,7 @@ hr.sep { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   padding: 10px 14px;
 }
 .combo-list { list-style: none; margin: 0; padding: 4px 0; max-height: 240px; overflow-y: auto; }
-.combo-option { padding: 10px 14px; cursor: pointer; font-size: 0.9rem; color: var(--text); }
+.combo-option { padding: 10px 14px; cursor: pointer; font-size: 1rem; color: var(--text); }
 .combo-option.active { background: var(--gold-100); }
 .combo-option[aria-selected="true"] { font-weight: 700; }
 .combo-empty { padding: 10px 14px; color: var(--text-dim); font-size: 0.85rem; }
@@ -1091,6 +1099,7 @@ details summary { cursor: pointer; font-size: 0.8rem; font-weight: 700; color: v
 
   /* sidebar (first grid column = right side in RTL) */
   #app > .bottom-nav {
+    --focus-ring: var(--gold-400);
     grid-column: 1;
     grid-row: 1 / span 2;
     position: sticky;
@@ -1150,6 +1159,7 @@ details summary { cursor: pointer; font-size: 0.8rem; font-weight: 700; color: v
 
   /* page header: paper title bar with the double gold rule */
   #app:has(> .bottom-nav) > .app-header {
+    --focus-ring: var(--gold-600);
     grid-column: 2;
     grid-row: 1;
     background: var(--bg);
