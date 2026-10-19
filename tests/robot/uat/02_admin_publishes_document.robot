@@ -123,6 +123,5 @@ Citizens no longer see "${name}"
     Click    .category-tile:has-text("${CATEGORY}")
     Get Text    id=doctype-list    *=    لا توجد وثائق في هذا التصنيف بعد
     Go To Route    /
-    Click    [data-action="search"]
     Fill Text    id=search-input    ${name}
     Get Text    id=most-requested-list    *=    لا توجد نتائج مطابقة

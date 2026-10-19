@@ -19,23 +19,27 @@ Unpublished Documents Are Never Listed
     Get Element Count    \#most-requested-list .list-card    ==    2
     Get Text    id=most-requested-list    not contains    مسودة غير منشورة
 
+The Search Field Is Always Shown At The Top
+    Wait For Elements State    id=search-input    visible
+    Get Attribute    id=search-input    type    ==    search
+    Get Element Count    [data-action="search"]    ==    0
+
 Search Finds A Document By Name
-    Click    [data-action="search"]
     Fill Text    id=search-input    توكيل
     Get Element Count    \#most-requested-list .list-card    ==    1
+    Get Text    id=list-title    ==    نتائج البحث
     Get Text    \#most-requested-list .list-card    *=    توكيل خاص
 
 Search Without Result Says So
-    Click    [data-action="search"]
     Fill Text    id=search-input    وثيقة غير موجودة
     Get Text    id=most-requested-list    *=    لا توجد نتائج مطابقة
 
 Clearing The Search Shows The Most Requested Again
-    Click    [data-action="search"]
     Fill Text    id=search-input    توكيل
     Get Element Count    \#most-requested-list .list-card    ==    1
     Fill Text    id=search-input    ${EMPTY}
     Get Element Count    \#most-requested-list .list-card    ==    2
+    Get Text    id=list-title    ==    الأكثر طلباً
 
 A Document Card Opens Its Form
     Click    \#most-requested-list .list-card >> nth=0

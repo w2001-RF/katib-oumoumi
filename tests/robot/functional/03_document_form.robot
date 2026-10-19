@@ -68,6 +68,23 @@ Correcting A Field Clears Its Error
     Click    id=submit-btn
     Field Should Have No Error    رقم البطاقة الوطنية
 
+A Wrong Value Shows Its Error As Soon As The Field Is Left
+    Fill Text    [data-field="رقم البطاقة الوطنية"] input    123
+    Field Should Have No Error    رقم البطاقة الوطنية
+    Keyboard Key    press    Tab
+    Field Error Should Be    رقم البطاقة الوطنية    رقم البطاقة الوطنية غير صحيح (مثال: G754103)
+    # Fixed while typing: the error goes away without leaving the field.
+    Fill Text    [data-field="رقم البطاقة الوطنية"] input    AB123456
+    Field Should Have No Error    رقم البطاقة الوطنية
+    Get Element Count    [data-field="رقم البطاقة الوطنية"] input[aria-invalid]    ==    0
+
+Tabbing Through Empty Fields Shows No Error
+    Click    [data-field="الاسم الكامل"] input
+    Keyboard Key    press    Tab
+    Keyboard Key    press    Tab
+    Field Should Have No Error    الاسم الكامل
+    Get Element Count    \#doc-form .has-error    ==    0
+
 The City Dropdown Is Searchable
     Click    [data-field="المدينة"] .combo-trigger
     Get Element Count    [data-field="المدينة"] .combo-option    ==    5

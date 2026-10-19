@@ -130,30 +130,49 @@ export async function renderDocForm(container, params) {
   form.addEventListener('change', schedulePreview);
   paintPreview();
 
+  const wrapOf = (field) => form.querySelector(`[data-field="${CSS.escape(field.field_key)}"]`);
+
+  // Shows or clears the field's error; returns true when the value is valid.
+  function checkField(field, wrap = wrapOf(field)) {
+    const errMsg = validateField(field, readFieldValue(wrap));
+    const errEl = wrap.querySelector('.error-msg');
+    // The native select and, when enhanced, the button that stands for it.
+    const controls = wrap.querySelectorAll('.combo-trigger, input:not(.other-input):not(.combo-search), textarea, select');
+    wrap.classList.toggle('has-error', Boolean(errMsg));
+    errEl.textContent = errMsg || '';
+    errEl.hidden = !errMsg;
+    controls.forEach((c) => (errMsg ? c.setAttribute('aria-invalid', 'true') : c.removeAttribute('aria-invalid')));
+    return !errMsg;
+  }
+
+  // Check a field as soon as people leave it, not only when they submit:
+  // a wrong CIN shows up right away. An untouched empty field stays quiet
+  // until the submit, so tabbing through the form doesn't fill it with errors.
+  const fieldOfWrap = (wrap) => fields.find((f) => f.field_key === wrap?.dataset.field);
+  form.addEventListener('focusout', (e) => {
+    const wrap = e.target.closest('[data-field]');
+    const field = fieldOfWrap(wrap);
+    if (!field || wrap.contains(e.relatedTarget)) return; // still inside the field (dropdown, «أخرى»)
+    if (readFieldValue(wrap).trim() === '' && !wrap.classList.contains('has-error')) return;
+    checkField(field, wrap);
+  });
+  // Once a field shows an error, it clears as soon as the value is right.
+  const recheck = (e) => {
+    const wrap = e.target.closest('[data-field]');
+    if (wrap?.classList.contains('has-error')) checkField(fieldOfWrap(wrap), wrap);
+  };
+  form.addEventListener('input', recheck);
+  form.addEventListener('change', recheck);
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const values = {};
     let hasError = false;
 
     for (const field of fields) {
-      const wrap = form.querySelector(`[data-field="${CSS.escape(field.field_key)}"]`);
-      const value = readFieldValue(wrap);
-      values[field.field_key] = value;
-      const errMsg = validateField(field, value);
-      const errEl = wrap.querySelector('.error-msg');
-      // The native select and, when enhanced, the button that stands for it.
-      const controls = wrap.querySelectorAll('.combo-trigger, input:not(.other-input), textarea, select');
-      if (errMsg) {
-        hasError = true;
-        wrap.classList.add('has-error');
-        errEl.textContent = errMsg;
-        errEl.hidden = false;
-        controls.forEach((c) => c.setAttribute('aria-invalid', 'true'));
-      } else {
-        wrap.classList.remove('has-error');
-        errEl.hidden = true;
-        controls.forEach((c) => c.removeAttribute('aria-invalid'));
-      }
+      const wrap = wrapOf(field);
+      values[field.field_key] = readFieldValue(wrap);
+      if (!checkField(field, wrap)) hasError = true;
     }
 
     if (hasError) {
