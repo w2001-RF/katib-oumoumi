@@ -41,7 +41,7 @@ export function enhanceSelect(select) {
       <span class="combo-value"></span>${CHEVRON}
     </button>
     <div class="combo-panel" hidden>
-      <input type="search" class="combo-search" placeholder="ابحث..." autocomplete="off" />
+      <input type="search" class="combo-search" placeholder="ابحث..." aria-label="ابحث في الخيارات" autocomplete="off" />
       <ul class="combo-list" role="listbox"></ul>
     </div>`;
   select.classList.add('combo-native');
@@ -54,6 +54,17 @@ export function enhanceSelect(select) {
   const list = combo.querySelector('.combo-list');
   let visible = [];
   let active = 0;
+
+  // The visible button takes over the hidden select's label and description,
+  // so a click on the label opens the list and screen readers name it.
+  const label = select.labels?.[0];
+  if (label && select.id) {
+    trigger.id = `${select.id}-combo`;
+    label.htmlFor = trigger.id;
+    list.setAttribute('aria-label', label.textContent.replace('*', '').trim());
+  }
+  const describedBy = select.getAttribute('aria-describedby');
+  if (describedBy) trigger.setAttribute('aria-describedby', describedBy);
 
   function paintValue() {
     const current = options.find((o) => o.value === select.value);

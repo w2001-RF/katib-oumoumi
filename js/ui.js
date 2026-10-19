@@ -68,6 +68,8 @@ export function showToast(message) {
     el = document.createElement('div');
     el.id = 'ko-toast';
     el.className = 'toast';
+    el.setAttribute('role', 'status'); // read out by screen readers, without moving focus
+    el.setAttribute('aria-live', 'polite');
     document.body.appendChild(el);
   }
   el.textContent = message;

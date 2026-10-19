@@ -15,7 +15,7 @@
   --frame: #d9cfb4;           /* the thin gold line framing cards */
   --text: #1b1a17;
   --text-dim: #6b665a;
-  --text-faint: #a39d8d;
+  --text-faint: #76705f;      /* 4.5:1 on --bg: it carries text (placeholders, dates, version) */
   --heading: #0f4c3a;         /* green used as a text colour */
   --link: #0f4c3a;
   --primary: #0f4c3a;         /* royal green */
@@ -72,7 +72,7 @@
     --frame: #3f3a2a;
     --text: #ece6d6;
     --text-dim: #a8a191;
-    --text-faint: #736d60;
+    --text-faint: #938d7c;
     --heading: #9ad4bb;
     --link: #9ad4bb;
     --primary: #15654d;
@@ -112,7 +112,7 @@
   --frame: #3f3a2a;
   --text: #ece6d6;
   --text-dim: #a8a191;
-  --text-faint: #736d60;
+  --text-faint: #938d7c;
   --heading: #9ad4bb;
   --link: #9ad4bb;
   --primary: #15654d;
@@ -168,6 +168,16 @@ img, svg { display: block; }
 :focus-visible {
   outline: 2px solid var(--gold-500);
   outline-offset: 2px;
+}
+
+/* Reduce Motion: no transitions, spinners turn slower, scrolling jumps. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .list-card:active { transform: none; }
+  .spinner { animation-duration: 2.4s; }
 }
 
 /* Cards framed like an official form: a thin gold line inset from the edge. */
@@ -432,6 +442,7 @@ img, svg { display: block; }
   gap: 12px;
 }
 .category-tile {
+  display: block;
   background: var(--surface);
   border-radius: var(--radius-md);
   padding: 16px 8px 14px;
@@ -624,7 +635,13 @@ img, svg { display: block; }
   color: var(--gold-600);
   margin: 22px 4px 10px;
 }
+/* Rows are buttons or links: reset the button look, keep the row's. */
 .settings-row {
+  width: 100%;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  text-align: start;
   background: var(--surface);
   border-radius: var(--radius-md);
   padding: 12px 16px;
@@ -642,6 +659,7 @@ img, svg { display: block; }
 .settings-row .title { font-weight: 700; font-size: 0.88rem; margin:0 0 2px; }
 .settings-row .desc { font-size: 0.74rem; color: var(--text-dim); }
 .settings-row .body { flex: 1; }
+.settings-row .title, .settings-row .desc { display: block; }
 .settings-footer {
   text-align: center;
   color: var(--text-faint);

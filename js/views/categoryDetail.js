@@ -1,6 +1,5 @@
 import { icon } from '../utils/icons.js';
 import { renderHeader, renderBottomNav, loadingSpinner, attachHeaderBack } from '../ui.js';
-import { navigate } from '../router.js';
 import { fetchCategory, fetchDocumentTypesByCategory } from '../api.js';
 
 export async function renderCategoryDetail(container, params) {
@@ -27,19 +26,16 @@ export async function renderCategoryDetail(container, params) {
     listEl.innerHTML = docTypes
       .map(
         (d) => `
-      <div class="list-card" data-doc-id="${d.id}">
+      <a class="list-card" href="#/doc/${d.id}" data-doc-id="${d.id}">
         <div class="icon-box">${icon(d.icon || 'document')}</div>
         <div class="body">
           <p class="title">${d.name_ar}</p>
           <div class="meta"><span>${d.description_ar || ''}</span></div>
         </div>
         <span class="chevron">${icon('chevronLeft')}</span>
-      </div>`
+      </a>`
       )
       .join('');
-    listEl.querySelectorAll('[data-doc-id]').forEach((card) => {
-      card.addEventListener('click', () => navigate(`/doc/${card.dataset.docId}`));
-    });
   } catch (e) {
     console.error(e);
     container.querySelector('#doctype-list').innerHTML =

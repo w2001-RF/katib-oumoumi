@@ -28,6 +28,22 @@ Settings Rows Give Information
     Click    id=rate-row
     Toast Should Contain    شكراً لدعمك
 
+Settings Rows Are Real Buttons And Links, Usable From The Keyboard
+    Go To Route    /settings
+    Get Property    id=about-row    tagName    ==    BUTTON
+    Get Attribute    id=privacy-row    href    ==    \#/privacy
+    Get Attribute    id=contact-row    href    ==    mailto:contact@katiboumoumi.online
+    Focus    id=about-row
+    Keyboard Key    press    Enter
+    Wait For Elements State    dialog.info-dialog    visible
+    Keyboard Key    press    Escape
+
+Toasts Are Announced To Screen Readers
+    Go To Route    /settings
+    Click    id=rate-row
+    Get Attribute    id=ko-toast    role    ==    status
+    Get Attribute    id=ko-toast    aria-live    ==    polite
+
 «About» Opens The App's Card And «OK» Closes It
     Go To Route    /settings
     Click    id=about-row
