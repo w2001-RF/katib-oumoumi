@@ -318,7 +318,10 @@ img, svg { display: block; }
   margin-bottom: 16px;
   box-shadow: var(--shadow-card);
 }
+.search-bar > svg { color: var(--text-dim); flex-shrink: 0; }
 .search-bar input {
+  appearance: none;
+  min-width: 0;
   border: none;
   outline: none; /* the bar shows the focus instead */
   flex: 1;

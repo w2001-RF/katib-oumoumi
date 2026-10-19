@@ -65,17 +65,19 @@ function siteFooter() {
 
 export async function renderHome(container) {
   container.innerHTML = `
-    ${renderHeader({ title: 'كاتب عمومي', showSearch: true, titleTag: 'p', brand: true })}
+    ${renderHeader({ title: 'كاتب عمومي', titleTag: 'p', brand: true })}
     <main class="app-main" id="home-main">
-      <div class="search-bar" id="search-bar" style="display:none;">
-        <input type="text" id="search-input" placeholder="ابحث عن وثيقة..." aria-label="ابحث عن وثيقة" />
-      </div>
+      <search class="search-bar" id="search-bar">
+        ${icon('search')}
+        <input type="search" id="search-input" placeholder="ابحث عن وثيقة: شكاية، توكيل، عقد كراء…"
+          aria-label="ابحث عن وثيقة" enterkeyhint="search" autocomplete="off" />
+      </search>
       <div class="hero-banner">
         <h1>كاتب عمومي — وثائقك الإدارية في دقيقة واحدة</h1>
         <p>حرّر شكاياتك وتوكيلاتك وعقودك وطلباتك الرسمية بالعربية، وحمّلها بصيغة Word أو PDF جاهزة للطباعة.</p>
         <button class="btn-gold" id="browse-btn">${icon('grid3')} تصفح التصنيفات</button>
       </div>
-      <h2 class="section-title">الأكثر طلباً</h2>
+      <h2 class="section-title" id="list-title">الأكثر طلباً</h2>
       <div id="most-requested-list" class="card-list">${loadingSpinner(true)}</div>
       ${ABOUT_HTML}
       ${siteFooter()}
@@ -83,16 +85,11 @@ export async function renderHome(container) {
     ${renderBottomNav('/')}
   `;
 
-  const searchBtn = container.querySelector('[data-action="search"]');
-  const searchBar = container.querySelector('#search-bar');
+  // Finding a document is the first thing people come for: the search
+  // field is always there, at the top of the page.
   const searchInput = container.querySelector('#search-input');
   const listEl = container.querySelector('#most-requested-list');
-
-  searchBtn.addEventListener('click', () => {
-    const willShow = searchBar.style.display === 'none';
-    searchBar.style.display = willShow ? 'flex' : 'none';
-    if (willShow) searchInput.focus();
-  });
+  const listTitle = container.querySelector('#list-title');
 
   container.querySelector('#browse-btn').addEventListener('click', () => navigate('/categories'));
 
@@ -101,6 +98,7 @@ export async function renderHome(container) {
     clearTimeout(searchTimer);
     const q = searchInput.value.trim();
     searchTimer = setTimeout(async () => {
+      listTitle.textContent = q ? 'نتائج البحث' : 'الأكثر طلباً';
       if (!q) {
         loadMostRequested();
         return;
