@@ -1,7 +1,6 @@
 import { icon } from '../utils/icons.js';
 import { BRAND_MARK, openInfoDialog, renderHeader, renderBottomNav, showToast } from '../ui.js';
 import { applyTheme, readThemePref } from '../theme.js';
-import { navigate } from '../router.js';
 import { APP_DESCRIPTION, APP_NAME, APP_VERSION, CONTACT_EMAIL, TELEGRAM_BOT_URL } from '../appInfo.js';
 
 const THEME_CHOICES = [
@@ -21,42 +20,42 @@ export async function renderSettings(container) {
       </div>
 
       <div class="settings-group-title">التطبيق</div>
-      <div class="settings-row" id="about-row">
-        <div class="icon-box">${icon('info')}</div>
-        <div class="body">
-          <p class="title">عن التطبيق</p>
-          <p class="desc">${APP_NAME} — v${APP_VERSION}</p>
-        </div>
-      </div>
-      <div class="settings-row" id="privacy-row">
-        <div class="icon-box">${icon('shield')}</div>
-        <div class="body"><p class="title">سياسة الخصوصية</p></div>
-      </div>
+      <button type="button" class="settings-row" id="about-row" aria-haspopup="dialog">
+        <span class="icon-box">${icon('info')}</span>
+        <span class="body">
+          <span class="title">عن التطبيق</span>
+          <span class="desc">${APP_NAME} — v${APP_VERSION}</span>
+        </span>
+      </button>
+      <a class="settings-row" id="privacy-row" href="#/privacy">
+        <span class="icon-box">${icon('shield')}</span>
+        <span class="body"><span class="title">سياسة الخصوصية</span></span>
+      </a>
 
       <div class="settings-group-title">دعمنا</div>
-      <div class="settings-row" id="rate-row">
-        <div class="icon-box">${icon('star')}</div>
-        <div class="body">
-          <p class="title">قيّم التطبيق</p>
-          <p class="desc">ساعدنا بتقييمك على المتجر</p>
-        </div>
-      </div>
-      <div class="settings-row" id="share-row">
-        <div class="icon-box">${icon('share2')}</div>
-        <div class="body">
-          <p class="title">شارك التطبيق</p>
-          <p class="desc">أخبر أصدقاءك عن كاتب عمومي</p>
-        </div>
-      </div>
+      <button type="button" class="settings-row" id="rate-row">
+        <span class="icon-box">${icon('star')}</span>
+        <span class="body">
+          <span class="title">قيّم التطبيق</span>
+          <span class="desc">ساعدنا بتقييمك على المتجر</span>
+        </span>
+      </button>
+      <button type="button" class="settings-row" id="share-row">
+        <span class="icon-box">${icon('share2')}</span>
+        <span class="body">
+          <span class="title">شارك التطبيق</span>
+          <span class="desc">أخبر أصدقاءك عن كاتب عمومي</span>
+        </span>
+      </button>
 
       <div class="settings-group-title">تواصل معنا</div>
-      <div class="settings-row" id="contact-row">
-        <div class="icon-box">${icon('mail')}</div>
-        <div class="body">
-          <p class="title">راسلنا</p>
-          <p class="desc">${CONTACT_EMAIL}</p>
-        </div>
-      </div>
+      <a class="settings-row" id="contact-row" href="mailto:${CONTACT_EMAIL}">
+        <span class="icon-box">${icon('mail')}</span>
+        <span class="body">
+          <span class="title">راسلنا</span>
+          <span class="desc">${CONTACT_EMAIL}</span>
+        </span>
+      </a>
 
       <p class="settings-footer">${APP_NAME} v${APP_VERSION}</p>
       <p class="settings-footer" style="margin-top:-18px;">
@@ -75,7 +74,6 @@ export async function renderSettings(container) {
   }));
 
   container.querySelector('#about-row').addEventListener('click', showAbout);
-  container.querySelector('#privacy-row').addEventListener('click', () => navigate('/privacy'));
   container.querySelector('#rate-row').addEventListener('click', () => {
     showToast('شكراً لدعمك! (رابط المتجر غير مهيأ بعد)');
   });
@@ -89,9 +87,6 @@ export async function renderSettings(container) {
     } else {
       showToast('انسخ الرابط لمشاركته: ' + globalThis.location.origin);
     }
-  });
-  container.querySelector('#contact-row').addEventListener('click', () => {
-    globalThis.location.href = `mailto:${CONTACT_EMAIL}`;
   });
 }
 

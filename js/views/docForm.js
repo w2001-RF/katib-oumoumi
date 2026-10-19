@@ -8,6 +8,8 @@ import { escapeHtml } from '../utils/format.js';
 import { enhanceSelects } from '../utils/searchableSelect.js';
 import { renderTemplate } from '../utils/templateEngine.js';
 
+const reducedMotion = () => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
 // Value of a field's control; for a dropdown set to «أخرى», the typed text.
 function readFieldValue(wrap) {
   const select = wrap.querySelector('select');
@@ -15,17 +17,23 @@ function readFieldValue(wrap) {
   return wrap.querySelector('input, textarea, select').value;
 }
 
-function fieldInputHtml(field) {
-  const req = field.is_required ? '<span class="req">*</span>' : '';
+// `index` builds the ids that tie each label and error message to its control
+// (field keys are Arabic and may hold spaces, so they can't be ids).
+function fieldInputHtml(field, index) {
+  const req = field.is_required ? '<span class="req" aria-hidden="true">*</span>' : '';
   const placeholder = escapeHtml(field.placeholder_ar || '');
   const key = escapeHtml(field.field_key);
   const label = escapeHtml(field.label_ar);
+  const id = `f-${index}`;
+  const a11y = `id="${id}" aria-describedby="${id}-err"${field.is_required ? ' aria-required="true"' : ''}`;
+  const labelHtml = `<label for="${id}">${req}${label}</label>`;
+  const errorHtml = `<div class="error-msg" id="${id}-err" hidden></div>`;
   if (field.field_type === 'text') {
     return `
       <div class="field" data-field="${key}">
-        <label>${req}${label}</label>
-        <textarea name="${key}" placeholder="${placeholder}"></textarea>
-        <div class="error-msg" hidden></div>
+        ${labelHtml}
+        <textarea name="${key}" ${a11y} placeholder="${placeholder}"></textarea>
+        ${errorHtml}
       </div>`;
   }
   if (field.field_type === 'select') {
@@ -34,23 +42,23 @@ function fieldInputHtml(field) {
       .join('');
     return `
     <div class="field" data-field="${key}">
-      <label>${req}${label}</label>
-      <select name="${key}">
+      ${labelHtml}
+      <select name="${key}" ${a11y}>
         <option value="">${placeholder || '— اختر —'}</option>
         ${options}
       </select>
-      ${hasOtherOption(field) ? '<input type="text" class="other-input" placeholder="اكتب القيمة" hidden />' : ''}
-      <div class="error-msg" hidden></div>
+      ${hasOtherOption(field) ? `<input type="text" class="other-input" placeholder="اكتب القيمة" aria-label="${label}: اكتب القيمة" hidden />` : ''}
+      ${errorHtml}
     </div>`;
   }
   const type = inputTypeFor(field.field_type);
   return `
     <div class="field" data-field="${key}">
-      <label>${req}${label}</label>
-      <input type="${type}" name="${key}" placeholder="${placeholder}" ${
+      ${labelHtml}
+      <input type="${type}" name="${key}" ${a11y} placeholder="${placeholder}" ${
     field.field_type === 'phone' ? 'inputmode="tel"' : ''
   } />
-      <div class="error-msg" hidden></div>
+      ${errorHtml}
     </div>`;
 }
 
@@ -133,19 +141,26 @@ export async function renderDocForm(container, params) {
       values[field.field_key] = value;
       const errMsg = validateField(field, value);
       const errEl = wrap.querySelector('.error-msg');
+      // The native select and, when enhanced, the button that stands for it.
+      const controls = wrap.querySelectorAll('.combo-trigger, input:not(.other-input), textarea, select');
       if (errMsg) {
         hasError = true;
         wrap.classList.add('has-error');
         errEl.textContent = errMsg;
         errEl.hidden = false;
+        controls.forEach((c) => c.setAttribute('aria-invalid', 'true'));
       } else {
         wrap.classList.remove('has-error');
         errEl.hidden = true;
+        controls.forEach((c) => c.removeAttribute('aria-invalid'));
       }
     }
 
     if (hasError) {
-      form.querySelector('.has-error')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const firstError = form.querySelector('.has-error');
+      firstError?.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'center' });
+      // Focus the field so a screen reader reads its label and error at once.
+      firstError?.querySelector('.combo-trigger, input:not([hidden]), textarea')?.focus({ preventScroll: true });
       return;
     }
 

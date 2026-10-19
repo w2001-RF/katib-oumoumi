@@ -19,6 +19,24 @@ The Form Shows Every Field Of The Document In Order
     Get Attribute    [data-field="التاريخ"] input    type    ==    date
     Get Attribute    [data-field="الاسم الكامل"] input    placeholder    ==    مثال: فاطمة الزهراء العلوي
 
+Each Field Is Named By Its Label
+    Get Attribute    [data-field="الاسم الكامل"] label    for    ==    f-0
+    Get Attribute    [data-field="الاسم الكامل"] input    id    ==    f-0
+    # The dropdown's visible button takes over the label of the hidden <select>.
+    ${for}=    Get Attribute    [data-field="المدينة"] label    for
+    Get Attribute    [data-field="المدينة"] .combo-trigger    id    ==    ${for}
+    Click    [data-field="المدينة"] label
+    Get Attribute    [data-field="المدينة"] .combo-trigger    aria-expanded    ==    true
+
+Errors Are Tied To Their Field And The First One Gets Focus
+    Click    id=submit-btn
+    Get Attribute    [data-field="الاسم الكامل"] input    aria-invalid    ==    true
+    ${error_id}=    Get Attribute    [data-field="الاسم الكامل"] input    aria-describedby
+    Get Text    id=${error_id}    ==    هذا الحقل إلزامي
+    Get Attribute    [data-field="المدينة"] .combo-trigger    aria-invalid    ==    true
+    Get Element States    [data-field="الاسم الكامل"] input    contains    focused
+    Get Element Count    [data-field="البريد الإلكتروني"] input[aria-invalid]    ==    0
+
 Required Fields Are Checked Before Generating
     Click    id=submit-btn
     Field Error Should Be    الاسم الكامل    هذا الحقل إلزامي
