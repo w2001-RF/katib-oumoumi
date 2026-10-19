@@ -2,10 +2,10 @@ import { icon } from '../utils/icons.js';
 import { renderHeader, attachHeaderBack, loadingSpinner, showToast } from '../ui.js';
 import { navigate } from '../router.js';
 import { requireAdmin } from './adminGuard.js';
-import { FIELD_TYPES } from '../utils/validators.js';
-import { renderTemplate, sampleValuesFor } from '../utils/templateEngine.js';
+import { FIELD_TYPES } from '../core/validators.js';
+import { renderTemplate, sampleValuesFor } from '../core/templateEngine.js';
 import { enhanceSelects } from '../utils/searchableSelect.js';
-import { uid, escapeHtml } from '../utils/format.js';
+import { uid, escapeHtml } from '../core/format.js';
 import {
   fetchCategories,
   adminFetchDocumentType,

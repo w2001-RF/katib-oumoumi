@@ -1,8 +1,8 @@
 import { icon } from '../utils/icons.js';
 import { renderHeader, renderBottomNav, attachHeaderBack, showToast } from '../ui.js';
-import { getHistoryEntry } from '../history.js';
+import { getHistoryEntry } from '../core/history.js';
 import { fetchDocumentType, fetchTemplateFields } from '../api.js';
-import { renderTemplate } from '../utils/templateEngine.js';
+import { renderTemplate } from '../core/templateEngine.js';
 import { exportAsWord, exportAsPdf } from '../utils/docGenerator.js';
 import { documentLoader, bindShareButton } from '../utils/shareButton.js';
 import { AdResult, adsConfig, adsEnabled, showRewardedAd } from '../utils/ads.js';

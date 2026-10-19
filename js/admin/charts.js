@@ -2,7 +2,7 @@
 // library, no build step. Colours come from CSS classes (.c-<cls>), and every
 // bar or point carries a <title> so hovering (or a screen reader) gives the value.
 
-import { escapeHtml } from '../utils/format.js';
+import { escapeHtml } from '../core/format.js';
 
 const W = 640;
 const PAD = { top: 10, right: 8, bottom: 22, left: 44 };

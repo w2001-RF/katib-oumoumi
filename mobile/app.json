@@ -1,0 +1,57 @@
+{
+  "expo": {
+    "name": "كاتب عمومي",
+    "slug": "katib-oumoumi",
+    "scheme": "katiboumoumi",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "online.katiboumoumi.app"
+    },
+    "android": {
+      "package": "online.katiboumoumi.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#b22234",
+        "foregroundImage": "./assets/android-icon-foreground.png"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-localization",
+        {
+          "forcesRTL": true,
+          "supportedLocales": {
+            "ios": [
+              "ar"
+            ],
+            "android": [
+              "ar"
+            ]
+          }
+        }
+      ],
+      "expo-sqlite",
+      "expo-sharing",
+      "expo-font",
+      "expo-web-browser",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 160,
+          "backgroundColor": "#0f4c3a",
+          "dark": {
+            "backgroundColor": "#0e1412"
+          }
+        }
+      ]
+    ]
+  }
+}

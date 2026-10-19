@@ -1,4 +1,4 @@
-import { APP_NAME, CONTACT_EMAIL, TELEGRAM_BOT_URL } from '../appInfo.js';
+import { APP_NAME, CONTACT_EMAIL, TELEGRAM_BOT_URL } from '../core/appInfo.js';
 import { attachHeaderBack, renderBottomNav, renderHeader } from '../ui.js';
 
 // Keep this text true to what the app does (js/api.js, js/history.js,

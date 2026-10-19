@@ -2,11 +2,11 @@ import { icon } from '../utils/icons.js';
 import { renderHeader, renderBottomNav, loadingSpinner, attachHeaderBack, showToast } from '../ui.js';
 import { navigate } from '../router.js';
 import { fetchDocumentType, fetchTemplateFields, incrementUsage, logGeneratedDocument } from '../api.js';
-import { validateField, inputTypeFor, fieldOptions, hasOtherOption, OTHER_OPTION } from '../utils/validators.js';
-import { addHistoryEntry } from '../history.js';
-import { escapeHtml } from '../utils/format.js';
+import { validateField, inputTypeFor, fieldOptions, hasOtherOption, OTHER_OPTION } from '../core/validators.js';
+import { addHistoryEntry } from '../core/history.js';
+import { escapeHtml } from '../core/format.js';
 import { enhanceSelects } from '../utils/searchableSelect.js';
-import { renderTemplate } from '../utils/templateEngine.js';
+import { renderTemplate } from '../core/templateEngine.js';
 
 const reducedMotion = () => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 

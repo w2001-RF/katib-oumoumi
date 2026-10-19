@@ -1,4 +1,4 @@
-import { uid } from './utils/format.js';
+import { uid } from './format.js';
 
 const KEY = 'ko_history';
 const MAX_ITEMS = 50;

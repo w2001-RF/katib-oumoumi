@@ -9,25 +9,11 @@
 // Both libraries (and FileSaver) are loaded on demand by ensureExportLibs()
 // and expose `htmlDocx`, `jspdf` and `saveAs` on `window`.
 import { ensureExportLibs } from './exportLibs.js';
-
-function wrapForExport(bodyHtml, title) {
-  return `<!DOCTYPE html>
-  <html dir="rtl" lang="ar">
-  <head>
-    <meta charset="utf-8" />
-    <title>${title}</title>
-    <style>
-      body { font-family: 'Tajawal', 'Arial', sans-serif; direction: rtl; text-align: right; font-size: 14px; color: #111; }
-      p { margin: 0 0 12px; line-height: 2; }
-    </style>
-  </head>
-  <body>${bodyHtml}</body>
-  </html>`;
-}
+import { documentHtml } from '../core/documentHtml.js';
 
 export async function exportAsWord(bodyHtml, filename) {
   await ensureExportLibs(['htmlDocx', 'saveAs']);
-  const full = wrapForExport(bodyHtml, filename);
+  const full = documentHtml(bodyHtml, filename);
   const blob = globalThis.htmlDocx.asBlob(full, { orientation: 'portrait' });
   globalThis.saveAs(blob, `${filename}.docx`);
 }

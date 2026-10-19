@@ -1,24 +1,9 @@
-import { escapeHtml } from './format.js';
-import { OTHER_OPTION } from './validators.js';
+import { escapeHtml } from '../core/format.js';
+import { OTHER_OPTION } from '../core/validators.js';
+import { normalizeForSearch } from '../core/arabicSearch.js';
 
 const CHEVRON =
   '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
-
-// Arabic-aware normalisation so that e.g. «اكادير» finds «أكادير»:
-// ignores hamza/madda forms, ta marbuta vs ha, alif maqsura vs ya,
-// diacritics, tatweel and letter case.
-export function normalizeForSearch(str) {
-  return String(str ?? '')
-    .toLowerCase()
-    .replaceAll(/[ً-ٰٟـ]/g, '')
-    .replaceAll(/[أإآٱ]/g, 'ا')
-    .replaceAll('ة', 'ه')
-    .replaceAll('ى', 'ي')
-    .replaceAll('ؤ', 'و')
-    .replaceAll('ئ', 'ي')
-    .replaceAll(/\s+/g, ' ')
-    .trim();
-}
 
 // Turns a native <select> into a dropdown with a search box. The native
 // select stays in the DOM (hidden) as the source of truth: its value is

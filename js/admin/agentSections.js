@@ -2,7 +2,7 @@
 // data (agent_dashboard() + agent-status). Every value that comes from the
 // database or a provider is escaped. Event wiring lives in adminAgents.js.
 
-import { escapeHtml as esc } from '../utils/format.js';
+import { escapeHtml as esc } from '../core/format.js';
 import {
   availability, bucketLabel, budgetView, capacityOf, CHANNEL_LABELS, channelLevel, delta, ERROR_LABELS, formatCompact,
   formatCount, formatMinutes, formatMs, formatPercent, formatUsd, isLocalProvider, isOngoing, labelOf, LEVEL_LABELS, modelLevel,

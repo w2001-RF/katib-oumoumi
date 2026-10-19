@@ -1,7 +1,7 @@
 import { icon } from '../utils/icons.js';
 import { BRAND_MARK, openInfoDialog, renderHeader, renderBottomNav, showToast } from '../ui.js';
 import { applyTheme, readThemePref } from '../theme.js';
-import { APP_DESCRIPTION, APP_NAME, APP_VERSION, CONTACT_EMAIL, TELEGRAM_BOT_URL } from '../appInfo.js';
+import { APP_DESCRIPTION, APP_NAME, APP_VERSION, CONTACT_EMAIL, TELEGRAM_BOT_URL } from '../core/appInfo.js';
 
 const THEME_CHOICES = [
   { value: 'auto', label: 'تلقائي', iconName: 'monitor' },
