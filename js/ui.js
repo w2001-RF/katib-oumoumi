@@ -8,8 +8,9 @@ const NAV_ITEMS = [
   { path: '/settings', label: 'الإعدادات', iconName: 'settings' },
 ];
 
-// The red seal: the brand mark (header on mobile, sidebar on desktop).
-export const BRAND_MARK = `<svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18" fill="#b22234"/><g fill="none" stroke="#f6f1e2"><circle cx="20" cy="20" r="14" stroke-width=".9"/><rect x="12" y="12" width="16" height="16" stroke-width="1.1"/><rect x="12" y="12" width="16" height="16" stroke-width="1.1" transform="rotate(45 20 20)"/></g><circle cx="20" cy="20" r="3.4" fill="#f6f1e2"/></svg>`;
+// The brand mark, same drawing as favicon.svg: a written sheet and a pen
+// inside the red seal. Header on mobile, sidebar on desktop, "about" dialog.
+export const BRAND_MARK = `<svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="30" fill="#b22234"/><circle cx="32" cy="32" r="26.5" fill="none" stroke="#f6f1e2" stroke-width="1.4"/><path d="M22.4 16H36l8 8v21.6a2.4 2.4 0 0 1-2.4 2.4H22.4a2.4 2.4 0 0 1-2.4-2.4V18.4a2.4 2.4 0 0 1 2.4-2.4z" fill="#f6f1e2"/><path d="M36 16v8h8z" fill="#d4b46a"/><path d="M24.8 28.8h14.4M24.8 33.6h14.4M24.8 38.4h8.8" stroke="#b22234" stroke-width="2.4" stroke-linecap="round"/><path d="M46.4 30.4l4 4-11.2 11.2-4.8.8.8-4.8z" fill="#d4b46a" stroke="#b22234" stroke-width="1.6" stroke-linejoin="round"/></svg>`;
 
 // On desktop (css/styles.css) this nav is a sidebar: the brand and the
 // light/dark toggle (js/theme.js) only show there.

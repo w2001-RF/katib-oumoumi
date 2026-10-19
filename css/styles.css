@@ -56,9 +56,9 @@
   --font: 'IBM Plex Sans Arabic', 'Segoe UI', Tahoma, Arial, sans-serif;
   --font-display: 'Amiri', 'Traditional Arabic', 'Times New Roman', serif;
   --font-doc: 'Tajawal', Arial, sans-serif; /* same face as the exported Word/PDF */
-  /* Diamond lattice (gold on green) and the seal outline, as ornaments. */
+  /* Diamond lattice (gold on green) and the brand mark (favicon.svg) in outline, as ornaments. */
   --lattice: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='22'%3E%3Cpath d='M0 11 11 0 22 11 11 22Z' fill='none' stroke='%23b8913a' stroke-opacity='.38' stroke-width='1'/%3E%3C/svg%3E");
-  --seal-outline: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cg fill='none' stroke='%23b8913a' stroke-width='.7'%3E%3Ccircle cx='20' cy='20' r='18'/%3E%3Ccircle cx='20' cy='20' r='14'/%3E%3Crect x='12' y='12' width='16' height='16'/%3E%3Crect x='12' y='12' width='16' height='16' transform='rotate(45 20 20)'/%3E%3Ccircle cx='20' cy='20' r='3.4'/%3E%3C/g%3E%3C/svg%3E");
+  --seal-outline: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cg fill='none' stroke='%23b8913a' stroke-width='1.1' stroke-linejoin='round' stroke-linecap='round'%3E%3Ccircle cx='32' cy='32' r='30'/%3E%3Ccircle cx='32' cy='32' r='26.5'/%3E%3Cpath d='M22.4 16H36l8 8v21.6a2.4 2.4 0 0 1-2.4 2.4H22.4a2.4 2.4 0 0 1-2.4-2.4V18.4a2.4 2.4 0 0 1 2.4-2.4z'/%3E%3Cpath d='M36 16v8h8'/%3E%3Cpath d='M24.8 28.8h14.4M24.8 33.6h14.4M24.8 38.4h8.8'/%3E%3Cpath d='M46.4 30.4l4 4-11.2 11.2-4.8.8.8-4.8z'/%3E%3C/g%3E%3C/svg%3E");
 }
 
 /* Dark: night ink, the same green, gold and seal. */
