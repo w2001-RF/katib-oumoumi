@@ -37,6 +37,11 @@ Errors Are Tied To Their Field And The First One Gets Focus
     Get Element States    [data-field="الاسم الكامل"] input    contains    focused
     Get Element Count    [data-field="البريد الإلكتروني"] input[aria-invalid]    ==    0
 
+Fields Use 16px Text So Phones Don't Zoom In On Focus
+    Get Style    [data-field="الاسم الكامل"] input    font-size    ==    16px
+    Get Style    [data-field="تفاصيل الشكاية"] textarea    font-size    ==    16px
+    Get Style    [data-field="المدينة"] .combo-trigger    font-size    ==    16px
+
 Required Fields Are Checked Before Generating
     Click    id=submit-btn
     Field Error Should Be    الاسم الكامل    هذا الحقل إلزامي
