@@ -3,6 +3,11 @@
 تطبيق ويب (Single Page Application) بلغة JavaScript الخام (Vanilla JS)، بدون أي إطار عمل
 (framework) وبدون خطوة بناء (build step)، يتصل مباشرة بـ Supabase، ويُنشر على GitHub Pages.
 
+🌐 **التطبيق متاح على: <https://katiboumoumi.online/>**
+
+🤖 **بوت تيليغرام: <https://t.me/KatibOumoumiBot>** (@KatibOumoumiBot) — نفس الوثائق انطلاقاً من نص أو رسالة
+صوتية أو صورة، انظر [`docs/ai-agent.md`](docs/ai-agent.md).
+
 يولّد التطبيق وثائق إدارية مغربية (شكايات، توكيلات، عقود...) بصيغتي **Word** و **PDF**
 انطلاقاً من قوالب يُعدّها المسؤول (Admin)، ويملؤها المستخدم العادي عبر نموذج ديناميكي.
 
@@ -69,6 +74,16 @@
 بعد نجاح أول عملية نشر، سيكون التطبيق متاحاً على الرابط الذي يظهر في تبويب **Actions**
 أو في **Settings → Pages**.
 
+### النطاق (Domain)
+
+التطبيق منشور على النطاق الخاص **<https://katiboumoumi.online/>**:
+
+- في **Settings → Pages → Custom domain** يكون النطاق `katiboumoumi.online`، مع تفعيل
+  **Enforce HTTPS** حتى يُحوَّل كل طلب `http://` تلقائياً إلى `https://`.
+- ملفات الجذر مرتبطة بهذا النطاق: `robots.txt` و`sitemap.xml` (`https://katiboumoumi.online/sitemap.xml`)
+  و`ads.txt` (انظر [`docs/google-ads.md`](docs/google-ads.md))، وكذلك الرابط القانوني (canonical)
+  وبطاقات المشاركة (Open Graph) في `index.html`. إذا تغيّر النطاق، يجب تحديثها كلها.
+
 ---
 
 ## 3. التطوير المحلي
@@ -104,13 +119,18 @@ js/main.js                     تسجيل المسارات وتشغيل التط
 js/router.js                   موجّه بسيط قائم على الـ hash (#/...)
 js/ui.js                       عناصر واجهة مشتركة: الترويسة، الشريط السفلي، Toast
 js/api.js                      كل استعلامات Supabase (عامة + مسؤول)
-js/session.js                  معرّف جلسة مجهول لكل متصفح
-js/history.js                  سجل الوثائق (localStorage)
-js/utils/
-  icons.js                     أيقونات SVG مضمّنة
-  format.js                    تنسيق التاريخ بالأشهر المغربية (يناير، غشت، دجنبر...)
+js/core/                       النواة المشتركة بين الويب وتطبيق الهاتف وبوت تيليغرام (بدون DOM)
+  catalog.js                   الاستعلامات العامة (التصنيفات، الوثائق، الحقول) انطلاقاً من عميل Supabase
   validators.js                أنواع الحقول والتحقق منها (هاتف مغربي، البطاقة الوطنية...)
   templateEngine.js            استبدال {{placeholders}} داخل نص القالب
+  format.js                    تنسيق التاريخ بالأشهر المغربية (يناير، غشت، دجنبر...)
+  documentHtml.js              صفحة HTML الكاملة للوثيقة المصدَّرة
+  history.js / session.js      سجل الوثائق ومعرّف الجهاز (localStorage)
+  arabicSearch.js              بحث عربي يتجاهل الهمزة والتاء المربوطة...
+  iconPaths.js / brandMark.js  رسوم الأيقونات والشعار (SVG)
+  appInfo.js                   اسم التطبيق، الإصدار، البريد، الروابط
+js/utils/
+  icons.js                     أيقونات SVG مضمّنة (من core/iconPaths.js)
   docGenerator.js              تصدير Word (html-docx-js) وPDF (jsPDF)
 js/views/                      الشاشات: الرئيسية، التصنيفات، النموذج، الجاهزية، السجل، الإعدادات
 js/admin/                       تسجيل دخول المسؤول، لوحة التحكم، إدارة التصنيفات والوثائق
@@ -118,6 +138,7 @@ supabase/schema.sql             مخطط القاعدة + RLS + بيانات أ�
 supabase/templates.sql          نصوص القوالب وحقولها وقوائمها (قابل لإعادة التنفيذ)
 supabase/migrations/            ترحيل قواعد البيانات القديمة إلى المخطط الحالي
 .github/workflows/deploy-pages.yml   نشر تلقائي على GitHub Pages
+mobile/                         تطبيق الهاتف (React Native + Expo)، انظر mobile/README.md
 ```
 
 ## 5. كيف تعمل توليد الوثائق (تقنياً)
@@ -156,6 +177,11 @@ supabase/migrations/            ترحيل قواعد البيانات القد�
 
 بوت يوجّد نفس الوثائق انطلاقاً من وصف مكتوب أو رسالة صوتية أو تصويرة، ويخدم مع أي نموذج ذكاء اصطناعي
 متوافق مع OpenAI API (Gemini، Groq، Ollama، Claude...). التفاصيل والإعداد: [`docs/ai-agent.md`](docs/ai-agent.md).
+
+## 6 مكرر. تطبيق الهاتف (Android / iOS)
+
+تطبيق React Native مبني بـ Expo في [`mobile/`](mobile/README.md)، يستعمل نفس النواة `js/core/`
+(نفس التحقق من الحقول، نفس القوالب، نفس الاستعلامات) ونفس قاعدة Supabase.
 
 ## 7. إضافة أنواع وثائق جديدة
 

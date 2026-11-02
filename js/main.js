@@ -6,6 +6,7 @@ import { renderDocForm } from './views/docForm.js';
 import { renderReady } from './views/ready.js';
 import { renderHistory } from './views/history.js';
 import { renderSettings } from './views/settings.js';
+import { renderPrivacy } from './views/privacy.js';
 import { renderAdminLogin } from './admin/adminLogin.js';
 import { renderAdminDashboard } from './admin/adminDashboard.js';
 import { renderAdminCategories } from './admin/adminCategories.js';
@@ -14,7 +15,10 @@ import { renderAdminAgents } from './admin/adminAgents.js';
 import { installSessionExpiryHandler } from './admin/sessionExpiry.js';
 import { adminSignOut } from './api.js';
 import { SESSION_EXPIRED_EVENT, supabaseReady } from './supabaseClient.js';
+import { bindThemeToggle } from './theme.js';
 import { showToast } from './ui.js';
+
+bindThemeToggle();
 
 registerRoute('/', renderHome);
 registerRoute('/categories', renderCategories);
@@ -23,6 +27,7 @@ registerRoute('/doc/:id', renderDocForm);
 registerRoute('/ready/:id', renderReady);
 registerRoute('/history', renderHistory);
 registerRoute('/settings', renderSettings);
+registerRoute('/privacy', renderPrivacy);
 
 registerRoute('/admin/login', renderAdminLogin);
 registerRoute('/admin', renderAdminDashboard);
@@ -51,8 +56,8 @@ if (supabaseReady) {
 } else {
   app.innerHTML = `
     <div style="padding:40px 24px;text-align:center;font-family:sans-serif;direction:rtl;">
-      <h2 style="color:#16294a;">إعداد Supabase غير مكتمل</h2>
-      <p style="color:#555;line-height:1.8;">
+      <h2 style="color:var(--heading);">إعداد Supabase غير مكتمل</h2>
+      <p style="color:var(--text-dim);line-height:1.8;">
         لم يتم العثور على <code>supabase-config.js</code>. إذا كنت تُشغّل المشروع محلياً، انسخ
         <code>supabase-config.example.js</code> إلى <code>supabase-config.js</code> واملأ بيانات مشروعك.
         عند النشر عبر GitHub Actions يتم توليد هذا الملف تلقائياً من أسرار المستودع

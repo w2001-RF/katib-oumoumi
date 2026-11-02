@@ -1,7 +1,7 @@
 import '../support/setup.js';
 import { assert, assertEquals } from 'jsr:@std/assert@1';
-import { addHistoryEntry, clearHistory, deleteHistoryEntry, getHistory, getHistoryEntry } from '../../js/history.js';
-import { getSessionId } from '../../js/session.js';
+import { addHistoryEntry, clearHistory, deleteHistoryEntry, getHistory, getHistoryEntry } from '../../js/core/history.js';
+import { getSessionId } from '../../js/core/session.js';
 import { currentPath, initRouter, navigate, registerRoute, renderCurrentRoute } from '../../js/router.js';
 
 // --- localStorage-backed modules ------------------------------------------------

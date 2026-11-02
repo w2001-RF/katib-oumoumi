@@ -2,7 +2,7 @@
 // through the web app's own validators. Models and users write numbers in
 // Arabic-Indic digits, add spaces inside phone numbers, "درهم" after amounts...
 
-import { fieldOptions, validateField } from '../../../../js/utils/validators.js';
+import { fieldOptions, validateField } from '../../../../js/core/validators.js';
 import { arabicPlaceName, hasLatinLetters } from './places.ts';
 import type { TemplateField } from './types.ts';
 

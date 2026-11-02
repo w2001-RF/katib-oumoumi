@@ -143,7 +143,7 @@ compatible OpenAI ([Speaches](https://github.com/speaches-ai/speaches), faster-w
 
 ## 7. Suivi dans le tableau de bord
 
-*Admin → « مراقبة الوكلاء الأذكياء »* (`#/admin/agents`) :
+*Admin → « مراقبة الوكلاء الأذكياء »* ([`katiboumoumi.online/#/admin/agents`](https://katiboumoumi.online/#/admin/agents)) :
 
 - **Modèles** : les modèles Ollama apparaissent sous le fournisseur `ollama`, avec un coût « local ». Le bouton
   « فحص مباشر » (vérification en direct) indique si le modèle est **téléchargé**, s'il est **en mémoire** (sinon la

@@ -9,25 +9,11 @@
 // Both libraries (and FileSaver) are loaded on demand by ensureExportLibs()
 // and expose `htmlDocx`, `jspdf` and `saveAs` on `window`.
 import { ensureExportLibs } from './exportLibs.js';
-
-function wrapForExport(bodyHtml, title) {
-  return `<!DOCTYPE html>
-  <html dir="rtl" lang="ar">
-  <head>
-    <meta charset="utf-8" />
-    <title>${title}</title>
-    <style>
-      body { font-family: 'Tajawal', 'Arial', sans-serif; direction: rtl; text-align: right; font-size: 14px; color: #111; }
-      p { margin: 0 0 12px; line-height: 2; }
-    </style>
-  </head>
-  <body>${bodyHtml}</body>
-  </html>`;
-}
+import { documentHtml } from '../core/documentHtml.js';
 
 export async function exportAsWord(bodyHtml, filename) {
   await ensureExportLibs(['htmlDocx', 'saveAs']);
-  const full = wrapForExport(bodyHtml, filename);
+  const full = documentHtml(bodyHtml, filename);
   const blob = globalThis.htmlDocx.asBlob(full, { orientation: 'portrait' });
   globalThis.saveAs(blob, `${filename}.docx`);
 }
@@ -53,7 +39,8 @@ const PX_PER_MM = CONTENT_WIDTH_PX / (A4_WIDTH_MM - 2 * PDF_MARGIN_MM);
 const PAGE_CONTENT_HEIGHT_PX = Math.floor((A4_HEIGHT_MM - 2 * PDF_MARGIN_MM) * PX_PER_MM);
 const RENDER_SCALE = 2;
 
-const FONT_CSS_URL = 'https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=block';
+// Self-hosted Tajawal (fonts/), like the rest of the app's fonts.
+const FONT_CSS_URL = new URL('../../fonts/tajawal.css', import.meta.url).href;
 const DOC_CSS = `.katib-doc { width:${CONTENT_WIDTH_PX}px; background:#fff; color:#111;
   font-family:Tajawal,Arial,sans-serif; font-size:14px; line-height:1.9;
   direction:rtl; text-align:right; }`;
@@ -71,16 +58,18 @@ function blobToDataUrl(blob) {
 
 // SVG images cannot load external resources, so the Tajawal @font-face
 // rules are inlined with data: URLs. Falls back to system fonts ('') if
-// Google Fonts is unreachable.
+// the font files cannot be fetched.
 function getEmbeddedFontCss() {
   if (!fontCssPromise) {
     fontCssPromise = (async () => {
       try {
         let css = await (await fetch(FONT_CSS_URL)).text();
-        const urls = [...new Set([...css.matchAll(/url\((https:[^)]+)\)/g)].map((m) => m[1]))];
-        const dataUrls = await Promise.all(urls.map(async (u) => blobToDataUrl(await (await fetch(u)).blob())));
+        const urls = [...new Set([...css.matchAll(/url\(([^)]+)\)/g)].map((m) => m[1]))];
+        const dataUrls = await Promise.all(
+          urls.map(async (u) => blobToDataUrl(await (await fetch(new URL(u, FONT_CSS_URL))).blob())),
+        );
         urls.forEach((u, i) => {
-          css = css.split(u).join(dataUrls[i]);
+          css = css.split(`url(${u})`).join(`url(${dataUrls[i]})`);
         });
         return css;
       } catch {

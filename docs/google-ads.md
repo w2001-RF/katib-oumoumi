@@ -1,5 +1,7 @@
 # Google ads before downloads
 
+App: <https://katiboumoumi.online/>
+
 On the "document ready" screen (`js/views/ready.js`) the user can watch a short **rewarded ad** to unlock the Word
 and PDF downloads. The ad is served by **Google Ad Manager** through the Google Publisher Tag
 (`js/utils/ads.js`). This replaced the old simulated 4-second countdown.
@@ -20,6 +22,12 @@ Manager (Ad Manager for small businesses is free).
 | No ad available, ad blocker, unsupported device, nothing ready within 8 s | Downloads unlocked anyway, with a short notice |
 
 A citizen is never blocked from their document because of an ad.
+
+> **AdSense Auto ads.** `index.html` also loads AdSense's `adsbygoogle.js` on every visit (Auto ads). That
+> tag is separate from the rewarded ad above: with it, Google's ad code and cookies are present from the first
+> page view, not only after the tap. It has no `integrity` attribute on purpose: Google changes the file
+> continuously without publishing hashes, so an SRI hash would block the ads (SonarQube hotspot S5725, reviewed
+> as safe). Remove the tag to go back to ads that load only on demand.
 
 ## Setup
 
@@ -46,8 +54,9 @@ window.ADS_CONFIG = { provider: 'gpt-rewarded', adUnitPath: '/22639388115/reward
 
 ## Things to know before going live
 
-- **`ads.txt` must be at the domain root.** `https://<user>.github.io/katib-oumoumi/ads.txt` does not count: use a
-  custom domain for the GitHub Pages site (e.g. `katib.ma`) so the file is served at `https://katib.ma/ads.txt`.
+- **`ads.txt` must be at the domain root.** `https://<user>.github.io/katib-oumoumi/ads.txt` does not count. The
+  site uses the custom domain `katiboumoumi.online`, so the file is served at <https://katiboumoumi.online/ads.txt>.
+  In Ad Manager / AdSense, the site to declare is `katiboumoumi.online`.
   Without a valid `ads.txt`, Google may serve few or no ads.
 - **Consent and privacy.** By default the ads are **non-personalised** (`nonPersonalizedAds`), the
   privacy-friendly choice for a public service (law 09-08 / CNDP). For personalised ads, especially if users come

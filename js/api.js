@@ -1,115 +1,27 @@
 import { supabase } from './supabaseClient.js';
-import { getSessionId } from './session.js';
+import { getSessionId } from './core/session.js';
+import { createCatalog } from './core/catalog.js';
 
 function assertClient() {
   if (!supabase) throw new Error('Supabase client is not configured.');
 }
 
-// --- Public reads -----------------------------------------------------------
+// --- Public reads and the citizen's writes (shared with the mobile app) --------
 
-export async function fetchCategories() {
-  assertClient();
-  const { data, error } = await supabase
-    .from('categories')
-    .select('*')
-    .order('sort_order', { ascending: true });
-  if (error) throw error;
-  return data;
-}
+const catalog = createCatalog(supabase, { getSessionId });
 
-export async function fetchCategory(id) {
-  assertClient();
-  const { data, error } = await supabase.from('categories').select('*').eq('id', id).single();
-  if (error) throw error;
-  return data;
-}
-
-export async function fetchDocumentTypesByCategory(categoryId) {
-  assertClient();
-  const { data, error } = await supabase
-    .from('document_types')
-    .select('*')
-    .eq('category_id', categoryId)
-    .eq('is_published', true)
-    .order('sort_order', { ascending: true });
-  if (error) throw error;
-  return data;
-}
-
-export async function fetchCategoryCounts() {
-  assertClient();
-  const { data, error } = await supabase
-    .from('document_types')
-    .select('category_id')
-    .eq('is_published', true);
-  if (error) throw error;
-  const counts = {};
-  for (const row of data) counts[row.category_id] = (counts[row.category_id] || 0) + 1;
-  return counts;
-}
-
-export async function fetchMostRequested(limit = 5) {
-  assertClient();
-  const { data, error } = await supabase
-    .from('document_types')
-    .select('*')
-    .eq('is_published', true)
-    .order('usage_count', { ascending: false })
-    .limit(limit);
-  if (error) throw error;
-  return data;
-}
-
-export async function searchDocumentTypes(query) {
-  assertClient();
-  const { data, error } = await supabase
-    .from('document_types')
-    .select('*')
-    .eq('is_published', true)
-    .ilike('name_ar', `%${query}%`)
-    .order('usage_count', { ascending: false })
-    .limit(20);
-  if (error) throw error;
-  return data;
-}
-
-export async function fetchDocumentType(id) {
-  assertClient();
-  const { data, error } = await supabase.from('document_types').select('*').eq('id', id).single();
-  if (error) throw error;
-  return data;
-}
-
-// Fields of a document, flattened by the v_template_fields view: catalog
-// defaults with the document's overrides applied and the dropdown choices
-// inlined as `options`.
-export async function fetchTemplateFields(documentTypeId) {
-  assertClient();
-  const { data, error } = await supabase
-    .from('v_template_fields')
-    .select('*')
-    .eq('document_type_id', documentTypeId)
-    .order('sort_order', { ascending: true });
-  if (error) throw error;
-  return data;
-}
-
-export async function incrementUsage(documentTypeId) {
-  assertClient();
-  const { error } = await supabase.rpc('increment_document_usage', { doc_id: documentTypeId });
-  if (error) console.warn('increment_document_usage failed', error);
-}
-
-export async function logGeneratedDocument(documentTypeId, data) {
-  assertClient();
-  const { data: row, error } = await supabase
-    .from('generated_documents')
-    .insert({ document_type_id: documentTypeId, session_id: getSessionId(), data })
-    .select()
-    .single();
-  if (error) throw error;
-  return row;
-}
+export const {
+  fetchCategories,
+  fetchCategory,
+  fetchDocumentTypesByCategory,
+  fetchCategoryCounts,
+  fetchMostRequested,
+  searchDocumentTypes,
+  fetchDocumentType,
+  fetchTemplateFields,
+  incrementUsage,
+  logGeneratedDocument,
+} = catalog;
 
 // --- Admin auth ---------------------------------------------------------------
 

@@ -105,7 +105,6 @@ The complaint can be deleted from the history
     Get Text    id=history-main    *=    لا توجد وثائق في السجل بعد
 
 The citizen searches for "${text}"
-    Click    [data-action="search"]
     Fill Text    id=search-input    ${text}
 
 The only result is "${name}"

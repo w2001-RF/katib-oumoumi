@@ -1,5 +1,6 @@
 import { icon } from './utils/icons.js';
 import { navigate } from './router.js';
+import { BRAND_SVG } from './core/brandMark.js';
 
 const NAV_ITEMS = [
   { path: '/', label: 'الرئيسية', iconName: 'home' },
@@ -8,6 +9,11 @@ const NAV_ITEMS = [
   { path: '/settings', label: 'الإعدادات', iconName: 'settings' },
 ];
 
+// The brand mark (js/core/brandMark.js): header on mobile, sidebar on desktop, "about" dialog.
+export const BRAND_MARK = BRAND_SVG.replace('<svg ', '<svg class="brand-mark" aria-hidden="true" ');
+
+// On desktop (css/styles.css) this nav is a sidebar: the brand and the
+// light/dark toggle (js/theme.js) only show there.
 export function renderBottomNav(activePath) {
   const items = NAV_ITEMS.map((item) => {
     const isActive = activePath === item.path;
@@ -16,9 +22,16 @@ export function renderBottomNav(activePath) {
       <span>${item.label}</span>
     </a>`;
   }).join('');
-  // Visual order in the markup is reversed (row-reverse in CSS) so أن
-  // "الرئيسية" lands on the right — the natural "home" position in RTL.
-  return `<nav class="bottom-nav">${items}</nav>`;
+  // RTL: the first item ("الرئيسية") lands on the right, the natural
+  // "home" position; on desktop it is the top of the sidebar.
+  return `<nav class="bottom-nav" aria-label="القائمة الرئيسية">
+    <div class="nav-brand">${BRAND_MARK}<span><b>كاتب عمومي</b><small>وثائقك الإدارية في دقيقة واحدة</small></span></div>
+    ${items}
+    <button type="button" class="nav-theme" data-action="toggle-theme">
+      <span class="theme-ic">${icon('moon')}</span><span class="theme-ic sun">${icon('sun')}</span>
+      <span>الوضع الفاتح / الداكن</span>
+    </button>
+  </nav>`;
 }
 
 export function isTabPath(path) {
@@ -26,15 +39,14 @@ export function isTabPath(path) {
 }
 
 // `titleTag`: 'h1' by default; the home page passes 'p' because its hero
-// carries the page's single H1.
-export function renderHeader({ title, showBack = false, showSearch = false, rightSlot = '', titleTag = 'h1' }) {
+// carries the page's single H1. `brand`: show the seal before the title.
+export function renderHeader({ title, showBack = false, rightSlot = '', titleTag = 'h1', brand = false }) {
   let left = '<span class="spacer"></span>';
   if (showBack) left = `<button class="icon-btn" data-action="back" aria-label="رجوع">${icon('arrowRight')}</button>`;
-  else if (showSearch) left = `<button class="icon-btn" data-action="search" aria-label="بحث">${icon('search')}</button>`;
   const right = rightSlot || '<span class="spacer"></span>';
   return `<header class="app-header">
     ${left}
-    <${titleTag} class="app-title">${title}</${titleTag}>
+    <${titleTag} class="app-title">${brand ? `<span class="brand">${BRAND_MARK}<span>${title}</span></span>` : title}</${titleTag}>
     ${right}
   </header>`;
 }
@@ -56,12 +68,44 @@ export function showToast(message) {
     el = document.createElement('div');
     el.id = 'ko-toast';
     el.className = 'toast';
+    el.setAttribute('role', 'status'); // read out by screen readers, without moving focus
+    el.setAttribute('aria-live', 'polite');
     document.body.appendChild(el);
   }
   el.textContent = message;
   el.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+}
+
+/**
+ * A small modal card (native <dialog>: Esc, focus and backdrop come for free).
+ * `media`, `body` and `footer` are trusted HTML; `title` and `subtitle` are text.
+ * Removed from the page once closed. Returns the dialog.
+ */
+export function openInfoDialog({ media = '', title, subtitle = '', body = '', footer = '', okLabel = 'حسناً' }) {
+  const dialog = document.createElement('dialog');
+  dialog.className = 'info-dialog';
+  dialog.setAttribute('aria-labelledby', 'info-dialog-title');
+  // The card fills the dialog: a click on the dialog element itself is a click on the backdrop.
+  dialog.innerHTML = `<div class="info-dialog-card">
+    ${media ? `<div class="info-dialog-media">${media}</div>` : ''}
+    <h2 id="info-dialog-title"></h2>
+    ${subtitle ? '<p class="info-dialog-subtitle"></p>' : ''}
+    <div class="info-dialog-body">${body}</div>
+    ${footer ? `<div class="info-dialog-footer">${footer}</div>` : ''}
+    <form method="dialog"><button class="info-dialog-ok" value="ok" autofocus>${okLabel}</button></form>
+  </div>`;
+  dialog.querySelector('h2').textContent = title;
+  if (subtitle) dialog.querySelector('.info-dialog-subtitle').textContent = subtitle;
+  // A click on the backdrop (outside the card) closes it, like on phones.
+  dialog.addEventListener('click', (e) => {
+    if (e.target === dialog) dialog.close();
+  });
+  dialog.addEventListener('close', () => dialog.remove());
+  document.body.appendChild(dialog);
+  dialog.showModal();
+  return dialog;
 }
 
 export function loadingSpinner(dark = false) {

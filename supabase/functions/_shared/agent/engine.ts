@@ -12,9 +12,9 @@
 // The last few exchanges are kept on the conversation (memory.ts) and given to
 // the model as context, with the admin's system prompt (agent_settings).
 
-import { formatDateAr } from '../../../../js/utils/format.js';
-import { renderTemplate } from '../../../../js/utils/templateEngine.js';
-import { OTHER_OPTION } from '../../../../js/utils/validators.js';
+import { formatDateAr } from '../../../../js/core/format.js';
+import { renderTemplate } from '../../../../js/core/templateEngine.js';
+import { OTHER_OPTION } from '../../../../js/core/validators.js';
 import type { Role } from '../ai/registry.ts';
 import { type LLM, LLMError, type SpeechToText, type TextToSpeech } from '../ai/types.ts';
 import { type Button, type Channel, MAX_VOICE_SECONDS } from '../channels/types.ts';

@@ -2,8 +2,9 @@
 // (Google Publisher Tag, https://developers.google.com/publisher-tag/samples/display-rewarded-ad).
 //
 // Rules this module follows:
-//   - opt-in: Google's script is loaded only after the user taps the button,
-//     so visiting the app loads no ad code and sets no ad cookie;
+//   - opt-in: Google Publisher Tag is loaded only after the user taps the
+//     button (the AdSense Auto ads tag in index.html is separate: it loads on
+//     every visit, see docs/google-ads.md);
 //   - the reward (the download) is given when Google grants it;
 //   - a citizen is never blocked from their document: when no ad can be shown
 //     (not configured, ad blocker, no ad available, unsupported device,

@@ -17,6 +17,11 @@ Categories Are Listed In Order With Their Published Document Count
     Get Text    .category-tile >> nth=2    *=    طلبات إدارية
     Get Text    .category-tile >> nth=2    *=    0 وثيقة
 
+Categories And Their Documents Are Links
+    Get Attribute    [data-cat-id="${CAT_COMPLAINTS}"]    href    ==    \#/categories/${CAT_COMPLAINTS}
+    Click    [data-cat-id="${CAT_PROXIES}"]
+    Get Attribute    [data-doc-id="${DOC_PROXY}"]    href    ==    \#/doc/${DOC_PROXY}
+
 A Category Lists Its Published Documents Only
     Click    [data-cat-id="${CAT_COMPLAINTS}"]
     Current Route Should Be    /categories/${CAT_COMPLAINTS}

@@ -19,6 +19,29 @@ The Form Shows Every Field Of The Document In Order
     Get Attribute    [data-field="التاريخ"] input    type    ==    date
     Get Attribute    [data-field="الاسم الكامل"] input    placeholder    ==    مثال: فاطمة الزهراء العلوي
 
+Each Field Is Named By Its Label
+    Get Attribute    [data-field="الاسم الكامل"] label    for    ==    f-0
+    Get Attribute    [data-field="الاسم الكامل"] input    id    ==    f-0
+    # The dropdown's visible button takes over the label of the hidden <select>.
+    ${for}=    Get Attribute    [data-field="المدينة"] label    for
+    Get Attribute    [data-field="المدينة"] .combo-trigger    id    ==    ${for}
+    Click    [data-field="المدينة"] label
+    Get Attribute    [data-field="المدينة"] .combo-trigger    aria-expanded    ==    true
+
+Errors Are Tied To Their Field And The First One Gets Focus
+    Click    id=submit-btn
+    Get Attribute    [data-field="الاسم الكامل"] input    aria-invalid    ==    true
+    ${error_id}=    Get Attribute    [data-field="الاسم الكامل"] input    aria-describedby
+    Get Text    id=${error_id}    ==    هذا الحقل إلزامي
+    Get Attribute    [data-field="المدينة"] .combo-trigger    aria-invalid    ==    true
+    Get Element States    [data-field="الاسم الكامل"] input    contains    focused
+    Get Element Count    [data-field="البريد الإلكتروني"] input[aria-invalid]    ==    0
+
+Fields Use 16px Text So Phones Don't Zoom In On Focus
+    Get Style    [data-field="الاسم الكامل"] input    font-size    ==    16px
+    Get Style    [data-field="تفاصيل الشكاية"] textarea    font-size    ==    16px
+    Get Style    [data-field="المدينة"] .combo-trigger    font-size    ==    16px
+
 Required Fields Are Checked Before Generating
     Click    id=submit-btn
     Field Error Should Be    الاسم الكامل    هذا الحقل إلزامي
@@ -44,6 +67,23 @@ Correcting A Field Clears Its Error
     Fill Text    [data-field="رقم الهاتف"] input    abc
     Click    id=submit-btn
     Field Should Have No Error    رقم البطاقة الوطنية
+
+A Wrong Value Shows Its Error As Soon As The Field Is Left
+    Fill Text    [data-field="رقم البطاقة الوطنية"] input    123
+    Field Should Have No Error    رقم البطاقة الوطنية
+    Keyboard Key    press    Tab
+    Field Error Should Be    رقم البطاقة الوطنية    رقم البطاقة الوطنية غير صحيح (مثال: G754103)
+    # Fixed while typing: the error goes away without leaving the field.
+    Fill Text    [data-field="رقم البطاقة الوطنية"] input    AB123456
+    Field Should Have No Error    رقم البطاقة الوطنية
+    Get Element Count    [data-field="رقم البطاقة الوطنية"] input[aria-invalid]    ==    0
+
+Tabbing Through Empty Fields Shows No Error
+    Click    [data-field="الاسم الكامل"] input
+    Keyboard Key    press    Tab
+    Keyboard Key    press    Tab
+    Field Should Have No Error    الاسم الكامل
+    Get Element Count    \#doc-form .has-error    ==    0
 
 The City Dropdown Is Searchable
     Click    [data-field="المدينة"] .combo-trigger

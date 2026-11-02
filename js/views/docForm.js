@@ -2,10 +2,13 @@ import { icon } from '../utils/icons.js';
 import { renderHeader, renderBottomNav, loadingSpinner, attachHeaderBack, showToast } from '../ui.js';
 import { navigate } from '../router.js';
 import { fetchDocumentType, fetchTemplateFields, incrementUsage, logGeneratedDocument } from '../api.js';
-import { validateField, inputTypeFor, fieldOptions, hasOtherOption, OTHER_OPTION } from '../utils/validators.js';
-import { addHistoryEntry } from '../history.js';
-import { escapeHtml } from '../utils/format.js';
+import { validateField, inputTypeFor, fieldOptions, hasOtherOption, OTHER_OPTION } from '../core/validators.js';
+import { addHistoryEntry } from '../core/history.js';
+import { escapeHtml } from '../core/format.js';
 import { enhanceSelects } from '../utils/searchableSelect.js';
+import { renderTemplate } from '../core/templateEngine.js';
+
+const reducedMotion = () => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 // Value of a field's control; for a dropdown set to «أخرى», the typed text.
 function readFieldValue(wrap) {
@@ -14,17 +17,23 @@ function readFieldValue(wrap) {
   return wrap.querySelector('input, textarea, select').value;
 }
 
-function fieldInputHtml(field) {
-  const req = field.is_required ? '<span class="req">*</span>' : '';
+// `index` builds the ids that tie each label and error message to its control
+// (field keys are Arabic and may hold spaces, so they can't be ids).
+function fieldInputHtml(field, index) {
+  const req = field.is_required ? '<span class="req" aria-hidden="true">*</span>' : '';
   const placeholder = escapeHtml(field.placeholder_ar || '');
   const key = escapeHtml(field.field_key);
   const label = escapeHtml(field.label_ar);
+  const id = `f-${index}`;
+  const a11y = `id="${id}" aria-describedby="${id}-err"${field.is_required ? ' aria-required="true"' : ''}`;
+  const labelHtml = `<label for="${id}">${req}${label}</label>`;
+  const errorHtml = `<div class="error-msg" id="${id}-err" hidden></div>`;
   if (field.field_type === 'text') {
     return `
       <div class="field" data-field="${key}">
-        <label>${req}${label}</label>
-        <textarea name="${key}" placeholder="${placeholder}"></textarea>
-        <div class="error-msg" hidden></div>
+        ${labelHtml}
+        <textarea name="${key}" ${a11y} placeholder="${placeholder}"></textarea>
+        ${errorHtml}
       </div>`;
   }
   if (field.field_type === 'select') {
@@ -33,23 +42,23 @@ function fieldInputHtml(field) {
       .join('');
     return `
     <div class="field" data-field="${key}">
-      <label>${req}${label}</label>
-      <select name="${key}">
+      ${labelHtml}
+      <select name="${key}" ${a11y}>
         <option value="">${placeholder || '— اختر —'}</option>
         ${options}
       </select>
-      ${hasOtherOption(field) ? '<input type="text" class="other-input" placeholder="اكتب القيمة" hidden />' : ''}
-      <div class="error-msg" hidden></div>
+      ${hasOtherOption(field) ? `<input type="text" class="other-input" placeholder="اكتب القيمة" aria-label="${label}: اكتب القيمة" hidden />` : ''}
+      ${errorHtml}
     </div>`;
   }
   const type = inputTypeFor(field.field_type);
   return `
     <div class="field" data-field="${key}">
-      <label>${req}${label}</label>
-      <input type="${type}" name="${key}" placeholder="${placeholder}" ${
+      ${labelHtml}
+      <input type="${type}" name="${key}" ${a11y} placeholder="${placeholder}" ${
     field.field_type === 'phone' ? 'inputmode="tel"' : ''
   } />
-      <div class="error-msg" hidden></div>
+      ${errorHtml}
     </div>`;
 }
 
@@ -75,14 +84,20 @@ export async function renderDocForm(container, params) {
   container.querySelector('h1').textContent = docType.name_ar;
   const main = container.querySelector('#form-main');
   main.innerHTML = `
-    <form id="doc-form" novalidate>
-      ${fields.map(fieldInputHtml).join('')}
-      <div class="form-footer">
-        <button type="submit" class="btn-primary" id="submit-btn">
-          ${icon('fileText')} توليد الوثيقة
-        </button>
-      </div>
-    </form>
+    <div class="form-layout">
+      <form id="doc-form" novalidate>
+        ${fields.map(fieldInputHtml).join('')}
+        <div class="form-footer">
+          <button type="submit" class="btn-primary" id="submit-btn">
+            ${icon('fileText')} توليد الوثيقة
+          </button>
+        </div>
+      </form>
+      <aside class="live-preview" aria-label="معاينة الوثيقة">
+        <div class="preview-cap">معاينة مباشرة</div>
+        <div class="doc-preview" id="live-doc"></div>
+      </aside>
+    </div>
   `;
 
   const form = main.querySelector('#doc-form');
@@ -97,30 +112,74 @@ export async function renderDocForm(container, params) {
   });
   const submitBtn = main.querySelector('#submit-btn');
 
+  // Live preview: the letter fills in as the user types.
+  const liveDoc = main.querySelector('#live-doc');
+  const readValues = () => Object.fromEntries(fields.map((f) => [
+    f.field_key,
+    readFieldValue(form.querySelector(`[data-field="${CSS.escape(f.field_key)}"]`)),
+  ]));
+  const paintPreview = () => {
+    liveDoc.innerHTML = renderTemplate(docType.template_body, fields, readValues());
+  };
+  let previewTimer = null;
+  const schedulePreview = () => {
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(paintPreview, 120);
+  };
+  form.addEventListener('input', schedulePreview);
+  form.addEventListener('change', schedulePreview);
+  paintPreview();
+
+  const wrapOf = (field) => form.querySelector(`[data-field="${CSS.escape(field.field_key)}"]`);
+
+  // Shows or clears the field's error; returns true when the value is valid.
+  function checkField(field, wrap = wrapOf(field)) {
+    const errMsg = validateField(field, readFieldValue(wrap));
+    const errEl = wrap.querySelector('.error-msg');
+    // The native select and, when enhanced, the button that stands for it.
+    const controls = wrap.querySelectorAll('.combo-trigger, input:not(.other-input):not(.combo-search), textarea, select');
+    wrap.classList.toggle('has-error', Boolean(errMsg));
+    errEl.textContent = errMsg || '';
+    errEl.hidden = !errMsg;
+    controls.forEach((c) => (errMsg ? c.setAttribute('aria-invalid', 'true') : c.removeAttribute('aria-invalid')));
+    return !errMsg;
+  }
+
+  // Check a field as soon as people leave it, not only when they submit:
+  // a wrong CIN shows up right away. An untouched empty field stays quiet
+  // until the submit, so tabbing through the form doesn't fill it with errors.
+  const fieldOfWrap = (wrap) => fields.find((f) => f.field_key === wrap?.dataset.field);
+  form.addEventListener('focusout', (e) => {
+    const wrap = e.target.closest('[data-field]');
+    const field = fieldOfWrap(wrap);
+    if (!field || wrap.contains(e.relatedTarget)) return; // still inside the field (dropdown, «أخرى»)
+    if (readFieldValue(wrap).trim() === '' && !wrap.classList.contains('has-error')) return;
+    checkField(field, wrap);
+  });
+  // Once a field shows an error, it clears as soon as the value is right.
+  const recheck = (e) => {
+    const wrap = e.target.closest('[data-field]');
+    if (wrap?.classList.contains('has-error')) checkField(fieldOfWrap(wrap), wrap);
+  };
+  form.addEventListener('input', recheck);
+  form.addEventListener('change', recheck);
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const values = {};
     let hasError = false;
 
     for (const field of fields) {
-      const wrap = form.querySelector(`[data-field="${CSS.escape(field.field_key)}"]`);
-      const value = readFieldValue(wrap);
-      values[field.field_key] = value;
-      const errMsg = validateField(field, value);
-      const errEl = wrap.querySelector('.error-msg');
-      if (errMsg) {
-        hasError = true;
-        wrap.classList.add('has-error');
-        errEl.textContent = errMsg;
-        errEl.hidden = false;
-      } else {
-        wrap.classList.remove('has-error');
-        errEl.hidden = true;
-      }
+      const wrap = wrapOf(field);
+      values[field.field_key] = readFieldValue(wrap);
+      if (!checkField(field, wrap)) hasError = true;
     }
 
     if (hasError) {
-      form.querySelector('.has-error')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const firstError = form.querySelector('.has-error');
+      firstError?.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'center' });
+      // Focus the field so a screen reader reads its label and error at once.
+      firstError?.querySelector('.combo-trigger, input:not([hidden]), textarea')?.focus({ preventScroll: true });
       return;
     }
 

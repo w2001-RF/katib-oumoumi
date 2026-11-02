@@ -4,6 +4,7 @@ import { navigate } from '../router.js';
 import { fetchMostRequested, searchDocumentTypes } from '../api.js';
 
 const SITE_URL = 'https://katiboumoumi.online/';
+const TELEGRAM_BOT_URL = 'https://t.me/KatibOumoumiBot';
 const SHARE_TEXT = 'كاتب عمومي — وثائقك الإدارية في دقيقة واحدة';
 
 // What the service is and how it works: useful to first-time visitors and to
@@ -20,6 +21,9 @@ const ABOUT_HTML = `
     <h2>وثائق إدارية مغربية جاهزة</h2>
     <p>يضم كاتب عمومي نماذج لأكثر الوثائق طلباً لدى المواطنين: الشكايات الموجّهة إلى السلطات المحلية أو النيابة العامة، والتوكيلات العامة والخاصة، وعقود الكراء والعمل، والشهادات والإقرارات بالشرف، والطلبات الرسمية الموجّهة إلى الإدارات العمومية والجماعات الترابية.</p>
     <p>كل نموذج مكتوب بلغة إدارية سليمة، ويتضمن العناصر التي تنتظرها الإدارة: المكان والتاريخ، والجهة المرسل إليها، والموضوع، وصيغ الافتتاح والختام، ومكان التوقيع. لم تعد بحاجة إلى التنقل وانتظار دورك لتحرير طلب بسيط: أعدّ وثيقتك من هاتفك أو حاسوبك في أي وقت، ثم اطبعها ووقّعها وأودعها لدى المصلحة المعنية.</p>
+
+    <h2>كاتب عمومي على تيليغرام</h2>
+    <p>لا تحب ملء الاستمارات؟ تحدّث مع <a href="${TELEGRAM_BOT_URL}" target="_blank" rel="noopener">بوت كاتب عمومي على تيليغرام (@KatibOumoumiBot)</a>: صِف حاجتك بالكتابة أو برسالة صوتية، أو أرسل صورة بطاقتك الوطنية أو الرسالة التي توصّلت بها، وسيطرح عليك البوت الأسئلة الناقصة ثم يرسل لك الوثيقة بصيغة PDF. خدمة مفيدة بالخصوص لمن يجد صعوبة في القراءة أو الكتابة.</p>
 
     <h2>لماذا تستعمل كاتب عمومي؟</h2>
     <ul>
@@ -47,6 +51,8 @@ function siteFooter() {
       <a href="#/categories">تصنيفات الوثائق</a>
       <a href="#/history">سجل الوثائق</a>
       <a href="#/settings">الإعدادات</a>
+      <a href="#/privacy">سياسة الخصوصية</a>
+      <a href="${TELEGRAM_BOT_URL}" target="_blank" rel="noopener">بوت تيليغرام</a>
     </nav>
     <nav aria-label="شارك كاتب عمومي">
       <span>شارك التطبيق:</span>
@@ -59,34 +65,31 @@ function siteFooter() {
 
 export async function renderHome(container) {
   container.innerHTML = `
-    ${renderHeader({ title: 'كاتب عمومي', showSearch: true, titleTag: 'p' })}
+    ${renderHeader({ title: 'كاتب عمومي', titleTag: 'p', brand: true })}
     <main class="app-main" id="home-main">
-      <div class="search-bar" id="search-bar" style="display:none;">
-        <input type="text" id="search-input" placeholder="ابحث عن وثيقة..." aria-label="ابحث عن وثيقة" />
-      </div>
+      <search class="search-bar" id="search-bar">
+        ${icon('search')}
+        <input type="search" id="search-input" placeholder="ابحث عن وثيقة: شكاية، توكيل، عقد كراء…"
+          aria-label="ابحث عن وثيقة" enterkeyhint="search" autocomplete="off" />
+      </search>
       <div class="hero-banner">
         <h1>كاتب عمومي — وثائقك الإدارية في دقيقة واحدة</h1>
         <p>حرّر شكاياتك وتوكيلاتك وعقودك وطلباتك الرسمية بالعربية، وحمّلها بصيغة Word أو PDF جاهزة للطباعة.</p>
         <button class="btn-gold" id="browse-btn">${icon('grid3')} تصفح التصنيفات</button>
       </div>
-      <h2 class="section-title">الأكثر طلباً</h2>
-      <div id="most-requested-list">${loadingSpinner(true)}</div>
+      <h2 class="section-title" id="list-title">الأكثر طلباً</h2>
+      <div id="most-requested-list" class="card-list">${loadingSpinner(true)}</div>
       ${ABOUT_HTML}
       ${siteFooter()}
     </main>
     ${renderBottomNav('/')}
   `;
 
-  const searchBtn = container.querySelector('[data-action="search"]');
-  const searchBar = container.querySelector('#search-bar');
+  // Finding a document is the first thing people come for: the search
+  // field is always there, at the top of the page.
   const searchInput = container.querySelector('#search-input');
   const listEl = container.querySelector('#most-requested-list');
-
-  searchBtn.addEventListener('click', () => {
-    const willShow = searchBar.style.display === 'none';
-    searchBar.style.display = willShow ? 'flex' : 'none';
-    if (willShow) searchInput.focus();
-  });
+  const listTitle = container.querySelector('#list-title');
 
   container.querySelector('#browse-btn').addEventListener('click', () => navigate('/categories'));
 
@@ -95,6 +98,7 @@ export async function renderHome(container) {
     clearTimeout(searchTimer);
     const q = searchInput.value.trim();
     searchTimer = setTimeout(async () => {
+      listTitle.textContent = q ? 'نتائج البحث' : 'الأكثر طلباً';
       if (!q) {
         loadMostRequested();
         return;

@@ -4,6 +4,8 @@
 (البطاقة الوطنية، رسالة توصل بها المستخدم...)، ويسوّل على المعلومات الناقصة حتى تكمل الوثيقة،
 ثم يرسل ملف PDF. موجّه بالخصوص للأشخاص الأميين والمكفوفين.
 
+**البوت**: <https://t.me/KatibOumoumiBot> (@KatibOumoumiBot) · **التطبيق**: <https://katiboumoumi.online/> · **لوحة مراقبة الوكلاء**: <https://katiboumoumi.online/#/admin/agents>
+
 **المخططات**: [البنية العامة للنظام](diagrams/system-architecture.html) ·
 [مسار المحادثة مع البوت](diagrams/agent-workflow.html) — انظر [`docs/diagrams/`](diagrams/README.md).
 
@@ -12,7 +14,7 @@
 - **القوالب والحقول هي نفسها ديال التطبيق** (`document_types`, `v_template_fields`): أي وثيقة يضيفها
   المسؤول من لوحة التحكم تصبح متاحة للبوت تلقائياً.
 - **الخادم هو اللي كيقرر، ماشي النموذج**: آلة حالات (`engine.ts`) كتعرف شنو ناقص من الحقول الإلزامية،
-  وكتتحقق من القيم بنفس `js/utils/validators.js` ديال التطبيق. النموذج كيدير غير 4 مهام بسيطة بجواب JSON
+  وكتتحقق من القيم بنفس `js/core/validators.js` ديال التطبيق. النموذج كيدير غير 4 مهام بسيطة بجواب JSON
   (`tasks.ts`): تحديد الوثيقة، استخراج القيم، صياغة السؤال، وإعادة صياغة الوقائع بالعربية الإدارية.
   لهذا يخدم مع **أي نموذج**: Gemini المجاني، Llama على Groq، Qwen محلي على Ollama، Claude...
 - **نماذج محلية (Ollama)**: على نفس الجهاز، الشبكة المحلية، سيرفر خاص بـ GPU، أو ollama.com، عبر الـ API الأصلي
@@ -94,7 +96,7 @@ npx supabase secrets set LLM_MODEL=gemini-3.8-flash
 
 ```bash
 # اختبارات (بدون شبكة ولا قاعدة بيانات)
-npx deno test --config tests/deno.json --allow-env tests supabase/functions
+npx deno test --config tests/deno.json --allow-env --allow-read tests supabase/functions
 
 # تقييم نموذج على eval/cases.json (يستعمل نفس متغيرات LLM_*)
 npx deno run --allow-net --allow-env --allow-read --env-file=supabase/functions/.env eval/run.ts
@@ -120,13 +122,13 @@ npx deno run --allow-net --allow-env --allow-read --env-file=supabase/functions/
 الإعداد في [`sonar-project.properties`](../sonar-project.properties). على SonarQube محلي:
 
 ```bash
-npx deno test --config tests/deno.json --allow-env --coverage=coverage/raw tests supabase/functions
+npx deno test --config tests/deno.json --allow-env --allow-read --coverage=coverage/raw tests supabase/functions
 npx deno coverage coverage/raw --lcov --output=coverage/lcov.info
 npx @sonar/scan -Dsonar.host.url=http://localhost:9000 -Dsonar.token=<TOKEN>
 ```
 or with powershell
 ```bash
-npx deno test --config tests/deno.json --allow-env --coverage=coverage/raw tests supabase/functions
+npx deno test --config tests/deno.json --allow-env --allow-read --coverage=coverage/raw tests supabase/functions
 npx deno coverage coverage/raw --lcov --output=coverage/lcov.info
 $env:SONAR_TOKEN = "<your token>"
 npx @sonar/scan "-Dsonar.host.url=http://localhost:9000"
@@ -135,7 +137,7 @@ npx @sonar/scan "-Dsonar.host.url=http://localhost:9000"
 
 ## 6. لوحة مراقبة الوكلاء (للمسؤول)
 
-لوحة التحكم ← **مراقبة الوكلاء الأذكياء** (`#/admin/agents`). كتعرض لكل فترة (24 ساعة، 7، 30، 90 يوم)
+لوحة التحكم ← **مراقبة الوكلاء الأذكياء** ([`katiboumoumi.online/#/admin/agents`](https://katiboumoumi.online/#/admin/agents)). كتعرض لكل فترة (24 ساعة، 7، 30، 90 يوم)
 مقارنة مع الفترة اللي قبلها:
 
 | الجزء | شنو كيبيّن |

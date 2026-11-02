@@ -1,16 +1,16 @@
 import { icon } from '../utils/icons.js';
 import { renderHeader, renderBottomNav, attachHeaderBack, showToast } from '../ui.js';
-import { getHistory, deleteHistoryEntry } from '../history.js';
-import { formatDateTimeShort } from '../utils/format.js';
+import { getHistory, deleteHistoryEntry } from '../core/history.js';
+import { formatDateTimeShort } from '../core/format.js';
 import { fetchDocumentType, fetchTemplateFields } from '../api.js';
-import { renderTemplate } from '../utils/templateEngine.js';
+import { renderTemplate } from '../core/templateEngine.js';
 import { documentLoader, bindShareButton } from '../utils/shareButton.js';
 import { navigate } from '../router.js';
 
 export async function renderHistory(container) {
   container.innerHTML = `
     ${renderHeader({ title: 'سجل الوثائق' })}
-    <main class="app-main" id="history-main"></main>
+    <main class="app-main card-list" id="history-main"></main>
     ${renderBottomNav('/history')}
   `;
   attachHeaderBack(container, '/');

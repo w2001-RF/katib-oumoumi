@@ -1,24 +1,9 @@
-import { escapeHtml } from './format.js';
-import { OTHER_OPTION } from './validators.js';
+import { escapeHtml } from '../core/format.js';
+import { OTHER_OPTION } from '../core/validators.js';
+import { normalizeForSearch } from '../core/arabicSearch.js';
 
 const CHEVRON =
   '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
-
-// Arabic-aware normalisation so that e.g. «اكادير» finds «أكادير»:
-// ignores hamza/madda forms, ta marbuta vs ha, alif maqsura vs ya,
-// diacritics, tatweel and letter case.
-export function normalizeForSearch(str) {
-  return String(str ?? '')
-    .toLowerCase()
-    .replaceAll(/[ً-ٰٟـ]/g, '')
-    .replaceAll(/[أإآٱ]/g, 'ا')
-    .replaceAll('ة', 'ه')
-    .replaceAll('ى', 'ي')
-    .replaceAll('ؤ', 'و')
-    .replaceAll('ئ', 'ي')
-    .replaceAll(/\s+/g, ' ')
-    .trim();
-}
 
 // Turns a native <select> into a dropdown with a search box. The native
 // select stays in the DOM (hidden) as the source of truth: its value is
@@ -41,7 +26,7 @@ export function enhanceSelect(select) {
       <span class="combo-value"></span>${CHEVRON}
     </button>
     <div class="combo-panel" hidden>
-      <input type="search" class="combo-search" placeholder="ابحث..." autocomplete="off" />
+      <input type="search" class="combo-search" placeholder="ابحث..." aria-label="ابحث في الخيارات" autocomplete="off" />
       <ul class="combo-list" role="listbox"></ul>
     </div>`;
   select.classList.add('combo-native');
@@ -54,6 +39,17 @@ export function enhanceSelect(select) {
   const list = combo.querySelector('.combo-list');
   let visible = [];
   let active = 0;
+
+  // The visible button takes over the hidden select's label and description,
+  // so a click on the label opens the list and screen readers name it.
+  const label = select.labels?.[0];
+  if (label && select.id) {
+    trigger.id = `${select.id}-combo`;
+    label.htmlFor = trigger.id;
+    list.setAttribute('aria-label', label.textContent.replace('*', '').trim());
+  }
+  const describedBy = select.getAttribute('aria-describedby');
+  if (describedBy) trigger.setAttribute('aria-describedby', describedBy);
 
   function paintValue() {
     const current = options.find((o) => o.value === select.value);

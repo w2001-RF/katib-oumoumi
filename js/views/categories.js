@@ -1,6 +1,5 @@
 import { icon, CATEGORY_ICON_COLORS } from '../utils/icons.js';
 import { renderHeader, renderBottomNav, loadingSpinner, attachHeaderBack } from '../ui.js';
-import { navigate } from '../router.js';
 import { fetchCategories, fetchCategoryCounts } from '../api.js';
 
 export async function renderCategories(container) {
@@ -24,16 +23,13 @@ export async function renderCategories(container) {
       .map((c, i) => {
         const colors = CATEGORY_ICON_COLORS[i % CATEGORY_ICON_COLORS.length];
         return `
-        <div class="category-tile" data-cat-id="${c.id}">
+        <a class="category-tile" href="#/categories/${c.id}" data-cat-id="${c.id}">
           <div class="icon-box" style="background:${colors.bg};color:${colors.fg};">${icon(c.icon)}</div>
           <p class="name">${c.name_ar}</p>
           <p class="count">${counts[c.id] || 0} وثيقة</p>
-        </div>`;
+        </a>`;
       })
       .join('')}</div>`;
-    grid.querySelectorAll('[data-cat-id]').forEach((tile) => {
-      tile.addEventListener('click', () => navigate(`/categories/${tile.dataset.catId}`));
-    });
   } catch (e) {
     console.error(e);
     container.querySelector('#categories-grid').innerHTML =

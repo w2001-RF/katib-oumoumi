@@ -1,10 +1,10 @@
 import { assert, assertEquals, assertMatch, assertStringIncludes } from 'jsr:@std/assert@1';
-import { escapeHtml, formatDateAr, formatDateTimeShort, MOROCCAN_MONTHS, slugifyKey, textToHtml, uid } from '../../js/utils/format.js';
+import { escapeHtml, formatDateAr, formatDateTimeShort, MOROCCAN_MONTHS, slugifyKey, textToHtml, uid } from '../../js/core/format.js';
 import icon, { CATEGORY_ICON_COLORS, icon as namedIcon } from '../../js/utils/icons.js';
-import { renderTemplate, sampleValuesFor } from '../../js/utils/templateEngine.js';
+import { renderTemplate, sampleValuesFor } from '../../js/core/templateEngine.js';
 import {
   FIELD_TYPES, fieldOptions, fieldTypeLabel, hasOtherOption, inputTypeFor, OTHER_OPTION, validateField,
-} from '../../js/utils/validators.js';
+} from '../../js/core/validators.js';
 
 Deno.test('formatDateAr uses Moroccan month names', () => {
   assertEquals(formatDateAr('2026-08-03'), '3 غشت 2026');
